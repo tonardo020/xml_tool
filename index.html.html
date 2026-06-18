@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedAudit — Hệ thống Kiểm tra Hồ sơ BHYT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* ─── TOKENS ─────────────────────────────────────────── */
+:root {
+  --paper:     #F4F6FB;
+  --surface:   #FFFFFF;
+  --sunken:    #EEF1F9;
+  --line:      #E3E7F1;
+  --line-strong:#CBD3E6;
+  --ink:       #0F1729;
+  --ink-soft:  #5A6478;
+  --ink-faint: #9AA3B8;
+
+  --brand:      #2454E8;
+  --brand-dark: #1B3FBE;
+  --brand-soft: #E8EDFC;
+
+  --red:       #DC2626;
+  --red-dim:   #FCEAEA;
+  --red-line:  rgba(220,38,38,0.22);
+
+  --amber:     #B4660A;
+  --amber-dim: #FBF0DE;
+  --amber-line:rgba(180,102,10,0.22);
+
+  --green:     #138755;
+  --green-dim: #E6F7EF;
+  --green-line:rgba(19,135,85,0.22);
+
+  --blue:      #0E84A8;
+  --blue-dim:  #E3F3F8;
+  --blue-line: rgba(14,132,168,0.22);
+
+  --violet:    #6E3FD6;
+  --violet-dim:#F0EAFC;
+  --violet-line:rgba(110,63,214,0.22);
+
+  --mono:    'JetBrains Mono', ui-monospace, monospace;
+  --sans:    'Manrope', -apple-system, sans-serif;
+  --display: 'Space Grotesk', var(--sans);
+
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  --shadow-card: 0 1px 2px rgba(15,23,41,0.05), 0 1px 0 rgba(15,23,41,0.03);
+  --shadow-pop:  0 8px 20px rgba(15,23,41,0.08);
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* ─── TOPBAR ─────────────────────────────────────────── */
+.topbar {
+  position: sticky; top:0; z-index:100;
+  background: rgba(244,246,251,0.88);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center;
+  padding: 0 28px; height: 58px; gap: 16px;
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand-mark {
+  width: 30px; height: 30px;
+  background: linear-gradient(155deg, var(--brand), var(--brand-dark));
+  border-radius: 8px;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(36,84,232,0.35);
+}
+.brand-mark svg { width:16px; height:16px; fill:white; }
+.brand-name { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.brand-sep { color: var(--ink-faint); margin: 0 4px; }
+.brand-sub { font-size: 12px; color: var(--ink-soft); font-weight: 500; }
+.topbar-spacer { flex:1; }
+.topbar-badge {
+  font-family: var(--mono);
+  font-size: 11px; font-weight: 600;
+  padding: 4px 11px; border-radius: 20px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-soft);
+  background: var(--surface);
+  white-space: nowrap;
+  transition: all .2s;
+}
+.topbar-badge.ready { color: var(--green); border-color: var(--green-line); background: var(--green-dim); }
+
+/* ─── LAYOUT ─────────────────────────────────────────── */
+.app-shell { display:flex; min-height:calc(100vh - 58px); }
+
+.sidebar-nav {
+  width: 224px; flex-shrink:0;
+  border-right: 1px solid var(--line);
+  padding: 20px 0;
+  position: sticky; top:58px;
+  height: calc(100vh - 58px);
+  overflow-y: auto;
+  background: var(--surface);
+}
+.sidebar-nav::-webkit-scrollbar { width:4px; }
+.sidebar-nav::-webkit-scrollbar-track { background:transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background:var(--line-strong); border-radius:4px; }
+
+.nav-section-label {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-faint);
+  padding: 8px 20px 6px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 20px;
+  color: var(--ink-soft);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+}
+.nav-item:hover { color: var(--ink); background: var(--sunken); }
+.nav-item.active { color: var(--brand); border-left-color: var(--brand); background: var(--brand-soft); }
+.nav-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ink-faint); flex-shrink:0;
+  transition: background .15s;
+}
+.nav-item.active .nav-dot, .nav-item:hover .nav-dot { background: var(--brand); }
+.nav-item.nav-ok .nav-dot { background: var(--green); }
+.nav-item.nav-ok:hover .nav-dot { background: var(--green); }
+.nav-item.nav-ok.active { color: var(--green); border-left-color: var(--green); background: var(--green-dim); }
+.nav-count {
+  margin-left:auto;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 10px;
+  background: var(--red-dim); color: var(--red);
+}
+.nav-item.nav-ok .nav-count { background: var(--green-dim); color: var(--green); }
+
+.main-content { flex:1; min-width:0; padding: 28px 32px 60px; }
+
+/* ─── UPLOAD SECTION ─────────────────────────────────── */
+.section-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+.section-title { font-family: var(--display); font-size: 17px; font-weight: 700; letter-spacing:-.01em; }
+.section-sub { font-size: 12px; color: var(--ink-soft); }
+
+.upload-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+@media(max-width:1100px){ .upload-grid { grid-template-columns: repeat(3,1fr); } }
+@media(max-width:700px){ .upload-grid { grid-template-columns: 1fr 1fr; } }
+
+.upload-card {
+  position: relative;
+  background: var(--surface);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 16px 14px 14px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, transform .15s, box-shadow .2s;
+  text-align: center;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.upload-card::before {
+  content: '';
+  position: absolute; top:0; left:0; right:0; height:2px;
+  background: var(--line);
+  transition: background .2s;
+}
+.upload-card:hover { border-color: var(--brand); background: var(--brand-soft); transform: translateY(-1px); box-shadow: var(--shadow-pop); }
+.upload-card:hover::before { background: var(--brand); }
+.upload-card.loaded { border-style: solid; border-color: var(--green-line); background: var(--green-dim); }
+.upload-card.loaded::before { background: var(--green); }
+.upload-card input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+
+.uc-num { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--ink-faint); margin-bottom: 10px; }
+.uc-icon { font-size: 24px; margin-bottom: 8px; display:block; }
+.uc-label { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom:3px; }
+.uc-hint { font-size: 11px; color: var(--ink-soft); line-height:1.4; }
+.uc-status { margin-top: 10px; font-size: 11px; font-weight: 700; font-family: var(--mono); color: var(--ink-faint); }
+.upload-card.loaded .uc-status { color: var(--green); }
+
+.badge-req {
+  display:inline-block; font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.05em;
+  padding: 1px 6px; border-radius:4px;
+  background: var(--red-dim); color: var(--red);
+  margin-left: 4px; vertical-align:middle;
+}
+.badge-opt {
+  display:inline-block; font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.05em;
+  padding: 1px 6px; border-radius:4px;
+  background: var(--sunken); color: var(--ink-faint);
+  margin-left: 4px; vertical-align:middle;
+}
+
+/* ─── RUN BUTTON ─────────────────────────────────────── */
+.run-zone { margin-bottom: 24px; }
+.run-btn {
+  width:100%; background: var(--brand);
+  color: white; border:none; border-radius: var(--r-md);
+  padding: 14px 20px;
+  font-family: var(--sans); font-size:14px; font-weight:700;
+  cursor:pointer; letter-spacing:-.01em;
+  transition: background .15s, transform .1s, box-shadow .15s;
+  display: flex; align-items:center; justify-content:center; gap: 8px;
+  box-shadow: 0 2px 10px rgba(36,84,232,0.25);
+}
+.run-btn:hover:not(:disabled) { background: var(--brand-dark); box-shadow: 0 4px 16px rgba(36,84,232,0.35); transform: translateY(-1px); }
+.run-btn:active:not(:disabled) { transform: translateY(0); }
+.run-btn:disabled { background: var(--sunken); color: var(--ink-faint); cursor:not-allowed; border: 1px solid var(--line); box-shadow:none; }
+.run-hint { text-align:center; font-size:12px; color: var(--ink-soft); margin-top:9px; }
+.run-hint b { color: var(--red); }
+
+/* ─── LOG BOX ────────────────────────────────────────── */
+.log-box {
+  background: var(--ink); color: #C7D2E8;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 12px 16px;
+  font-family: var(--mono); font-size: 12px;
+  max-height: 150px; overflow-y: auto;
+  margin-bottom: 24px; display: none;
+}
+.log-box.visible { display:block; }
+.log-box::-webkit-scrollbar { width:4px; }
+.log-box::-webkit-scrollbar-thumb { background:#33415F; border-radius:4px; }
+.log-line { margin-bottom:2px; color: #9FB0CE; }
+.log-line.ok { color: #4ADE9C; }
+.log-line.err { color: #FF8585; }
+
+/* ─── SUMMARY SCORECARD ──────────────────────────────── */
+.scorecard { display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 28px; }
+@media(max-width:1000px){ .scorecard { grid-template-columns: repeat(3,1fr); } }
+@media(max-width:600px){  .scorecard { grid-template-columns: 1fr 1fr; } }
+
+.score-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 17px 18px;
+  position: relative; overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.score-card::after { content:''; position:absolute; bottom:0; left:0; right:0; height:3px; background: var(--line); }
+.score-card.total { background: var(--ink); }
+.score-card.total .score-label, .score-card.total .score-sub { color: rgba(255,255,255,0.65); }
+.score-card.total .score-n { color: #fff; }
+.score-card.err::after  { background: var(--red); }
+.score-card.ok::after   { background: var(--green); }
+.score-card.warn::after { background: var(--amber); }
+
+.score-n { font-family: var(--mono); font-weight:700; font-size: 32px; line-height:1; margin-bottom:5px; color: var(--ink); }
+.score-card.err .score-n  { color: var(--red); }
+.score-card.ok  .score-n  { color: var(--green); }
+.score-card.total .score-n { font-size:38px; }
+.score-label { font-size:12px; color: var(--ink-soft); font-weight:600; }
+.score-sub   { font-size:11px; color: var(--ink-faint); margin-top:3px; }
+
+/* ─── MODULE SECTIONS ────────────────────────────────── */
+.module { margin-bottom: 32px; scroll-margin-top: 76px; }
+.module-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 15px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  border-left: 4px solid var(--red);
+}
+.module-header.amber { border-left-color: var(--amber); }
+.module-header.violet { border-left-color: var(--violet); }
+.module-header.blue { border-left-color: var(--blue); }
+.module-header:hover { background: var(--sunken); }
+.module-icon { font-size: 17px; }
+.module-title { font-family: var(--display); font-size:15px; font-weight:700; flex:1; letter-spacing:-.01em; color: var(--ink); }
+.module-meta { font-size:11px; color:var(--ink-soft); font-family:var(--mono); }
+.module-count { font-family: var(--mono); font-size:12px; font-weight:700; padding: 3px 11px; border-radius:20px; background: var(--red-dim); color: var(--red); }
+.module-header.amber .module-count { background: var(--amber-dim); color: var(--amber); }
+.module-header.violet .module-count { background: var(--violet-dim); color: var(--violet); }
+.module-header.blue .module-count { background: var(--blue-dim); color: var(--blue); }
+.module-chevron { font-size:11px; color:var(--ink-faint); transition: transform .2s; }
+.module.collapsed .module-chevron { transform: rotate(-90deg); }
+.module.collapsed .module-body { display:none; }
+
+.module-body { border: 1px solid var(--line); border-top:none; border-radius: 0 0 var(--r-md) var(--r-md); overflow: hidden; background: var(--surface); }
+
+/* sub-groups inside a module */
+.sub-group { border-bottom: 1px solid var(--line); }
+.sub-group:last-child { border-bottom:none; }
+.sub-header { display:flex; align-items:center; gap:10px; padding: 12px 20px; background: var(--sunken); cursor:pointer; user-select:none; }
+.sub-header:hover { background: #E3E8F4; }
+.sub-title { font-size:13px; font-weight:700; flex:1; color:var(--ink); }
+.sub-count { font-family:var(--mono); font-size:11px; font-weight:700; padding: 1px 8px; border-radius:10px; background:var(--red-dim); color:var(--red); }
+.sub-header.amber .sub-count { background:var(--amber-dim); color:var(--amber); }
+.sub-chevron { font-size:10px; color:var(--ink-faint); transition:transform .2s; }
+.sub-group.collapsed .sub-chevron { transform:rotate(-90deg); }
+.sub-group.collapsed .sub-body { display:none; }
+
+/* ─── DATA TABLE ─────────────────────────────────────── */
+.dt-wrap { overflow-x: auto; }
+.dt { width:100%; border-collapse:collapse; font-size: 12.5px; }
+.dt th {
+  background: var(--sunken); color: var(--ink-soft);
+  font-size: 10.5px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.07em;
+  padding: 10px 16px; text-align:left;
+  border-bottom: 1px solid var(--line);
+  white-space:nowrap;
+  font-family: var(--mono);
+}
+.dt td { padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align:top; color: var(--ink); }
+.dt tr:last-child td { border-bottom:none; }
+.dt tr:hover td { background: var(--paper); }
+.dt td:first-child { font-family:var(--mono); font-size:11px; color:var(--ink-faint); }
+
+/* ─── CHIPS & PILLS ──────────────────────────────────── */
+.chip { display:inline-flex; align-items:center; gap:4px; border-radius: 20px; padding: 2px 9px; font-size: 11px; font-weight: 700; white-space:nowrap; }
+.chip-red    { background:var(--red-dim);    color:var(--red);    border:1px solid var(--red-line); }
+.chip-amber  { background:var(--amber-dim);  color:var(--amber);  border:1px solid var(--amber-line); }
+.chip-green  { background:var(--green-dim);  color:var(--green);  border:1px solid var(--green-line); }
+.chip-blue   { background:var(--blue-dim);   color:var(--blue);   border:1px solid var(--blue-line); }
+.chip-violet { background:var(--violet-dim); color:var(--violet); border:1px solid var(--violet-line); }
+.chip-muted  { background:var(--sunken); color:var(--ink-soft); border:1px solid var(--line); }
+
+.pill { display:inline-block; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; white-space:nowrap; }
+.pill-drug  { background:var(--blue-dim);   color:#0A6F8E;  border:1px solid var(--blue-line); }
+.pill-svc   { background:var(--violet-dim); color:#5B32B8;  border:1px solid var(--violet-line); }
+.pill-cls   { background:var(--amber-dim);  color:var(--amber); border:1px solid var(--amber-line); }
+
+/* ─── TIME / TIMESTAMP TREATMENT ─────────────────────── *
+ * Signature element: timestamps render as bold mono "digital
+ * readout" chips so the moment of each violation is the first
+ * thing the eye lands on when scanning a case.                 */
+.t-pill {
+  display:inline-block;
+  font-family: var(--mono); font-size: 13px; font-weight: 700;
+  color: var(--ink); background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  padding: 3px 10px; border-radius: 6px;
+  white-space: nowrap; letter-spacing: -0.01em;
+}
+.t-inline { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+
+.time-range { display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:14px; font-weight:600; color:var(--ink-soft); margin-top:4px; }
+.time-range .sep { color:var(--ink-faint); font-weight:400; }
+.time-val { color:var(--ink); font-weight:700; font-size:14.5px; }
+.dur-badge {
+  display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700;
+  padding:2px 8px; border-radius:5px;
+  background:var(--blue-dim); color:var(--blue);
+  margin-left:6px;
+}
+
+/* ─── PHÂN THÂN: MASTER/DETAIL ───────────────────────── */
+.master-detail { display:flex; min-height:360px; border-radius:0 0 var(--r-md) var(--r-md); overflow:hidden; }
+.master-list { width:244px; flex-shrink:0; border-right:1px solid var(--line); background: var(--sunken); overflow-y:auto; }
+.master-list::-webkit-scrollbar { width:4px; }
+.master-list::-webkit-scrollbar-thumb { background:var(--line-strong); border-radius:4px; }
+.master-sticky {
+  position:sticky; top:0; z-index:1;
+  padding:11px 16px;
+  background: var(--surface);
+  border-bottom:1px solid var(--line);
+  font-size:10px; font-weight:700; text-transform:uppercase;
+  letter-spacing:.07em; color:var(--ink-faint);
+  font-family:var(--mono);
+  display:flex; align-items:center; gap:8px;
+}
+.master-item { padding:12px 16px; border-bottom:1px solid var(--line); cursor:pointer; transition:background .12s; border-left:3px solid transparent; }
+.master-item:hover { background:var(--surface); }
+.master-item.active { background: var(--surface); border-left-color: var(--brand); box-shadow: inset 0 0 0 1px var(--line); }
+.master-name { font-size:13px; font-weight:700; color:var(--ink); margin-bottom:6px; }
+.master-item.active .master-name { color: var(--brand); }
+.master-meta { display:flex; gap:5px; flex-wrap:wrap; }
+
+.detail-panel { flex:1; padding:20px 24px; overflow-y:auto; max-height:520px; background: var(--surface); }
+.detail-panel::-webkit-scrollbar { width:4px; }
+.detail-panel::-webkit-scrollbar-thumb { background:var(--line-strong); border-radius:4px; }
+.detail-bs-header { display:flex; align-items:center; gap:12px; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+.detail-bs-name { font-family: var(--display); font-size:16px; font-weight:700; flex:1; color: var(--ink); }
+
+.incident-card { border:1px solid var(--line); border-left:4px solid var(--red); border-radius:var(--r-sm); margin-bottom:12px; overflow:hidden; box-shadow: var(--shadow-card); }
+.incident-card.cls-type { border-left-color:var(--amber); }
+.incident-head {
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:11px 14px;
+  background: var(--sunken);
+  border-bottom:1px solid var(--line);
+}
+.incident-card.cls-type .incident-head { background: var(--amber-dim); }
+.incident-num { font-family:var(--mono); font-size:10.5px; font-weight:700; color:var(--red); text-transform:uppercase; letter-spacing:.05em; }
+.incident-card.cls-type .incident-num { color:var(--amber); }
+.incident-time {
+  font-family: var(--mono); font-size: 19px; font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  padding: 5px 14px;
+  border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.incident-body { padding:13px 14px; background: var(--surface); }
+
+.bn-row { padding:9px 0; border-bottom:1px solid var(--line); }
+.bn-row:last-child { border-bottom:none; }
+.bn-name { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; font-weight:700; color: var(--ink); }
+.bn-code { font-family:var(--mono); font-size:11px; color:var(--ink-faint); font-weight:500; }
+.bn-pills { display:flex; flex-wrap:wrap; gap:5px; }
+
+/* ─── SECTION DIVIDER ────────────────────────────────── */
+.divider { display:flex; align-items:center; gap:12px; margin:28px 0 16px; }
+.divider-line { flex:1; height:1px; background:var(--line); }
+.divider-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); white-space:nowrap; }
+
+/* ─── EMPTY STATE ────────────────────────────────────── */
+.empty-state { text-align:center; padding:64px 20px; color:var(--ink-soft); }
+.empty-ico { font-size:44px; margin-bottom:12px; }
+.empty-msg { font-size:14px; font-weight: 600; }
+
+@media(max-width:700px){
+  .main-content { padding:16px; }
+  .sidebar-nav { display:none; }
+  .master-detail { flex-direction:column; }
+  .master-list { width:100%; border-right:none; border-bottom:1px solid var(--line); }
+  .detail-panel { max-height:none; }
+  .incident-time { font-size: 16px; }
+}
+
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <a class="topbar-brand" href="#">
+    <div class="brand-mark">
+      <svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm-.5 4.5a.5.5 0 011 0v4.793l2.854 2.853a.5.5 0 01-.708.708l-3-3A.5.5 0 019.5 11.5V6.5z"/></svg>
+    </div>
+    <span class="brand-name">MedAudit</span>
+    <span class="brand-sep">·</span>
+    <span class="brand-sub">Kiểm tra Hồ sơ BHYT — CV130</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-badge" id="topBadge">0 / 5 tệp đã tải</div>
+</header>
+
+<div class="app-shell">
+
+  <!-- SIDEBAR NAV -->
+  <nav class="sidebar-nav" id="sideNav">
+    <div class="nav-section-label">Tải dữ liệu</div>
+    <a class="nav-item active" href="#upload-section" onclick="scrollTo('upload-section')">
+      <span class="nav-dot"></span>Nhập liệu
+    </a>
+
+    <div class="nav-section-label" style="margin-top:12px">Kết quả phân tích</div>
+    <a class="nav-item nav-ok" id="nav-m1" href="#mod-phanthan" onclick="scrollTo('mod-phanthan')">
+      <span class="nav-dot"></span>Xung đột giờ bác sĩ
+      <span class="nav-count" id="ncount1" style="display:none">0</span>
+    </a>
+    <a class="nav-item nav-ok" id="nav-m2" href="#mod-yeLenh" onclick="scrollTo('mod-yeLenh')">
+      <span class="nav-dot"></span>Y lệnh thuốc bất hợp lệ
+      <span class="nav-count" id="ncount2" style="display:none">0</span>
+    </a>
+    <a class="nav-item nav-ok" id="nav-m3" href="#mod-noisoi" onclick="scrollTo('mod-noisoi')">
+      <span class="nav-dot"></span>Nội soi Tai Mũi Họng
+      <span class="nav-count" id="ncount3" style="display:none">0</span>
+    </a>
+    <a class="nav-item nav-ok" id="nav-m4" href="#mod-xquang" onclick="scrollTo('mod-xquang')">
+      <span class="nav-dot"></span>Chẩn đoán hình ảnh XQ
+      <span class="nav-count" id="ncount4" style="display:none">0</span>
+    </a>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main-content">
+
+    <!-- UPLOAD -->
+    <div id="upload-section">
+      <div class="section-header">
+        <span class="section-title">Nhập dữ liệu hồ sơ</span>
+        <span class="section-sub">Kéo–thả hoặc bấm để chọn tệp · định dạng .xlsx / .xls</span>
+      </div>
+
+      <div class="upload-grid">
+        <div class="upload-card" id="card1" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,1)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,1)">
+          <div class="uc-num">01</div>
+          <span class="uc-icon">🗂</span>
+          <div class="uc-label">Hồ sơ bệnh nhân <span class="badge-req">BẮT BUỘC</span></div>
+          <div class="uc-hint">XML1 — Thông tin BN, ngày vào / ra viện</div>
+          <div class="uc-status" id="st1">Chưa tải</div>
+        </div>
+        <div class="upload-card" id="card2" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,2)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,2)">
+          <div class="uc-num">02</div>
+          <span class="uc-icon">💊</span>
+          <div class="uc-label">Y lệnh thuốc <span class="badge-req">BẮT BUỘC</span></div>
+          <div class="uc-hint">XML2 — Thuốc, mã bác sĩ, giờ chỉ định</div>
+          <div class="uc-status" id="st2">Chưa tải</div>
+        </div>
+        <div class="upload-card" id="card3" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,3)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,3)">
+          <div class="uc-num">03</div>
+          <span class="uc-icon">🔬</span>
+          <div class="uc-label">Dịch vụ kỹ thuật <span class="badge-req">BẮT BUỘC</span></div>
+          <div class="uc-hint">XML3 — Khám, CLS, nội soi, X-quang</div>
+          <div class="uc-status" id="st3">Chưa tải</div>
+        </div>
+        <div class="upload-card" id="card4" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,4)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,4)">
+          <div class="uc-num">04</div>
+          <span class="uc-icon">📊</span>
+          <div class="uc-label">Kết quả xét nghiệm <span class="badge-opt">KHUYẾN NGHỊ</span></div>
+          <div class="uc-hint">XML4 — KQ CLS, bác sĩ đọc kết quả</div>
+          <div class="uc-status" id="st4">Chưa tải</div>
+        </div>
+        <div class="upload-card" id="card5" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,5)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,5)">
+          <div class="uc-num">05</div>
+          <span class="uc-icon">🪪</span>
+          <div class="uc-label">Danh sách CCHN <span class="badge-opt">TÙY CHỌN</span></div>
+          <div class="uc-hint">Chứng chỉ hành nghề — đối chiếu tên bác sĩ</div>
+          <div class="uc-status" id="st5">Chưa tải</div>
+        </div>
+      </div>
+
+      <div class="run-zone">
+        <button class="run-btn" id="runBtn" onclick="runAnalysis()" disabled>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 2a.5.5 0 01.25.067l9 5a.5.5 0 010 .866l-9 5A.5.5 0 013 12.5v-9a.5.5 0 01.5-.5z"/></svg>
+          Chạy phân tích hồ sơ
+        </button>
+        <div class="run-hint" id="runHint">Cần tải đủ <b>XML1, XML2, XML3</b> để bắt đầu</div>
+      </div>
+
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="results"></div>
+
+  </main>
+</div>
+
+<script>
+function scrollTo(id){ document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'}); return false; }
+
+// ─── FILE HANDLING ──────────────────────────────────────
+const data = { xml1:null, xml2:null, xml3:null, xml4:null, cchn:null };
+const REQUIRED = ['xml1','xml2','xml3'];
+
+function dov(e){ e.preventDefault(); e.currentTarget.style.borderColor='var(--blue)'; }
+function dlv(e){ e.currentTarget.style.borderColor=''; }
+function ddr(e,i){ e.preventDefault(); e.currentTarget.style.borderColor=''; const f=e.dataTransfer?.files[0]; if(f) processFile(f,i); }
+function hfc(e,i){ const f=e.target.files[0]; if(f) processFile(f,i); }
+
+function processFile(file, idx) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:false});
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:'', raw:true});
+      const key = ['xml1','xml2','xml3','xml4','cchn'][idx-1];
+      data[key] = rows;
+      document.getElementById('card'+idx).classList.add('loaded');
+      document.getElementById('st'+idx).textContent = `✓ ${rows.length.toLocaleString('vi')} dòng`;
+      checkReady();
+    } catch {
+      document.getElementById('st'+idx).textContent = '✗ Lỗi đọc tệp';
+      document.getElementById('st'+idx).style.color = 'var(--red)';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function checkReady() {
+  const loaded = Object.values(data).filter(Boolean).length;
+  const missing = REQUIRED.filter(k => !data[k]);
+  const ready = missing.length === 0;
+  document.getElementById('runBtn').disabled = !ready;
+  document.getElementById('topBadge').textContent = `${loaded} / 5 tệp đã tải`;
+  document.getElementById('topBadge').classList.toggle('ready', ready);
+  document.getElementById('runHint').innerHTML = ready
+    ? 'Đã đủ dữ liệu bắt buộc — sẵn sàng phân tích ✓'
+    : `Cần tải đủ <b>${missing.map(k=>k.toUpperCase()).join(', ')}</b> để bắt đầu`;
+}
+
+// ─── DATE UTILS ─────────────────────────────────────────
+function parseDate(v) {
+  if (!v && v!==0) return null;
+  const s = String(Math.round(Number(v))).trim();
+  if (s.length===12) return new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8),+s.slice(8,10),+s.slice(10,12));
+  if (s.length===8)  return new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8));
+  return null;
+}
+function tgKey(v) { if (!v&&v!==0) return ''; return String(Math.round(Number(v))).slice(0,12); }
+function fmtDate(v) {
+  const d = v instanceof Date ? v : parseDate(v);
+  if (!d||isNaN(d)) return String(v||'—');
+  return d.toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function minutesDiff(a,b){ return Math.round((b-a)/60000); }
+
+// ─── LOG ─────────────────────────────────────────────────
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  box.classList.add('visible');
+  const ln = document.createElement('div');
+  ln.className = 'log-line '+(type||'');
+  ln.textContent = `[${new Date().toLocaleTimeString('vi')}] ${msg}`;
+  box.appendChild(ln); box.scrollTop=box.scrollHeight;
+}
+
+// ─── ANALYSIS ────────────────────────────────────────────
+function runAnalysis() {
+  document.getElementById('logBox').innerHTML='';
+  log(`XML1:${data.xml1?.length||0}  XML2:${data.xml2?.length||0}  XML3:${data.xml3?.length||0}  XML4:${data.xml4?.length||0}`);
+
+  const hoSoMap={};
+  for(const r of data.xml1) hoSoMap[r.MA_LK]=r;
+
+  const cchnMap={};
+  if(data.cchn) for(const r of data.cchn){
+    const ma=String(r['MA CCHN']||r['MA_CCHN']||'').trim();
+    const ten=String(r['TEN BS']||r['TEN_BS']||'').trim();
+    if(ma) cchnMap[ma]=ten;
+  }
+  function docFull(maBS){ const m=String(maBS||'').trim(); const t=cchnMap[m]; return t?`${t} (${m})`:m; }
+  function docName(maBS){ const m=String(maBS||'').trim(); return cchnMap[m]||m; }
+
+  const errors={ phanthan:[], gioyLenhSauRaVien:[], xungdotNoiSoi:[], xungdotXQ:[] };
+
+  // Y lệnh tổng hợp (XML2+XML3)
+  const yLenh=[];
+  for(const r of data.xml2){
+    const maBS=String(r.MA_BAC_SI||'').trim(); const tgRaw=r.NGAY_YL||r.NGAY_TH_YL||'';
+    if(!maBS||maBS==='0'||!tgRaw) continue;
+    const tg=tgKey(tgRaw); if(!tg) continue;
+    yLenh.push({maBS,tg,tgDate:parseDate(tgRaw),MA_LK:r.MA_LK,loai:'Thuốc',ten:r.TEN_THUOC||''});
+  }
+  for(const r of data.xml3){
+    const maBS=String(r.MA_BAC_SI||'').trim(); const tgRaw=r.NGAY_YL||r.NGAY_TH_YL||'';
+    if(!maBS||maBS==='0'||!tgRaw) continue;
+    const tg=tgKey(tgRaw); if(!tg) continue;
+    yLenh.push({maBS,tg,tgDate:parseDate(tgRaw),MA_LK:r.MA_LK,loai:'DVKT',ten:r.TEN_DICH_VU||''});
+  }
+  const ylIndex={};
+  for(const yl of yLenh){ const k=yl.maBS+'||'+yl.tg; if(!ylIndex[k]) ylIndex[k]=[]; ylIndex[k].push(yl); }
+
+  // CLS events (XML4)
+  const clsIndex={};
+  if(data.xml4) for(const r of data.xml4){
+    const maBS=String(r.MA_BS_DOC_KQ||r.MA_BAC_SI||'').trim(); const tgRaw=r.NGAY_KQ||'';
+    if(!maBS||maBS==='0'||!tgRaw) continue;
+    const tg=tgKey(tgRaw); if(!tg) continue;
+    const k=maBS+'||'+tg; if(!clsIndex[k]) clsIndex[k]=[];
+    clsIndex[k].push({maBS,tg,MA_LK:r.MA_LK});
+  }
+
+  // M1a: PHÂN THÂN y lệnh
+  log('Kiểm tra xung đột giờ bác sĩ...');
+  const ylGrp={};
+  for(const yl of yLenh){
+    if(!yl.maBS||yl.maBS==='0') continue;
+    const k=yl.maBS+'||'+yl.tg; if(!ylGrp[k]) ylGrp[k]={maBS:yl.maBS,tg:yl.tg,items:[]};
+    ylGrp[k].items.push(yl);
+  }
+  for(const k of Object.keys(ylGrp)){
+    const g=ylGrp[k]; const malks=[...new Set(g.items.map(x=>x.MA_LK))];
+    if(malks.length<2) continue;
+    errors.phanthan.push({type:'phanthan',maBS:g.maBS,tenBS:docFull(g.maBS),thoiGian:g.tg,
+      benhNhanList:malks.map(malk=>{ const hs=hoSoMap[malk]; return{malk,tenBN:hs?.HO_TEN||'?',maBN:hs?.MA_BN||'?',yLenh:g.items.filter(x=>x.MA_LK===malk)}; }),
+      soLuong:malks.length});
+  }
+
+  // M1b: ĐỌC CLS đồng thời y lệnh
+  for(const clsKey of Object.keys(clsIndex)){
+    const cls=clsIndex[clsKey]; const yls=ylIndex[clsKey]||[];
+    if(!yls.length) continue;
+    const [maBS,tg]=clsKey.split('||');
+    const clsBNSet=new Set(cls.map(c=>c.MA_LK));
+    const allBNs=new Set([...clsBNSet,...yls.map(y=>y.MA_LK)]);
+    const bnList=[...allBNs].map(malk=>{ const hs=hoSoMap[malk];
+      return{malk,tenBN:hs?.HO_TEN||'?',maBN:hs?.MA_BN||'?',hasCLS:clsBNSet.has(malk),yLenh:yls.filter(y=>y.MA_LK===malk)}; });
+    errors.phanthan.push({type:'cls',maBS,tenBS:docFull(maBS),thoiGian:tg,benhNhanList:bnList,soLuong:allBNs.size});
+  }
+  log(`→ Xung đột lịch: ${errors.phanthan.length} ca`, errors.phanthan.length>0?'err':'ok');
+
+  // M2: Y LỆNH THUỐC BẤT HỢP LỆ
+  log('Kiểm tra y lệnh thuốc...');
+  const clsByBN={};
+  if(data.xml4) for(const r of data.xml4){ const tg=tgKey(r.NGAY_KQ); if(tg&&r.MA_LK){ if(!clsByBN[r.MA_LK]) clsByBN[r.MA_LK]=new Set(); clsByBN[r.MA_LK].add(tg); } }
+  const gioyLenhMap={};
+  for(const r of data.xml2){
+    const hs=hoSoMap[r.MA_LK]; if(!hs) continue;
+    const ngayRA=parseDate(hs.NGAY_RA); const ngayYL=parseDate(r.NGAY_YL||r.NGAY_TH_YL);
+    if(!ngayYL) continue;
+    const tg12=tgKey(r.NGAY_YL||r.NGAY_TH_YL);
+    const isAfterRA=ngayRA&&ngayYL>ngayRA;
+    const isTrungCLS=data.xml4&&clsByBN[r.MA_LK]&&clsByBN[r.MA_LK].has(tg12);
+    if(!isAfterRA&&!isTrungCLS) continue;
+    if(!gioyLenhMap[r.MA_LK]) gioyLenhMap[r.MA_LK]={MA_LK:r.MA_LK,tenBN:hs.HO_TEN||'?',maBN:hs.MA_BN||'?',maBS:r.MA_BAC_SI,tenBS:docFull(r.MA_BAC_SI),ngayRA:hs.NGAY_RA,thuocLoi:[]};
+    const chenh=ngayRA?minutesDiff(ngayRA,ngayYL):null;
+    gioyLenhMap[r.MA_LK].thuocLoi.push({thuoc:r.TEN_THUOC||'?',ngayYL:r.NGAY_YL||r.NGAY_TH_YL,isAfterRA,isTrungCLS,chenhLech:chenh!==null?chenh+' phút':null});
+  }
+  errors.gioyLenhSauRaVien=Object.values(gioyLenhMap);
+  log(`→ Y lệnh thuốc bất hợp lệ: ${errors.gioyLenhSauRaVien.length} BN`, errors.gioyLenhSauRaVien.length>0?'err':'ok');
+
+  // M3: NỘI SOI TMH
+  log('Kiểm tra nội soi Tai Mũi Họng...');
+  const TMH_KW=['tai mũi họng','nội soi tmh','nội soi tai','nội soi mũi','nội soi họng','nội soi thanh quản','nội soi xoang','nội soi ống tai','nội soi vòm'];
+  const isTMH=t=>t&&TMH_KW.some(kw=>t.toLowerCase().includes(kw));
+  const ylByBS={};
+  for(const yl of yLenh){ if(!ylByBS[yl.maBS]) ylByBS[yl.maBS]=[]; ylByBS[yl.maBS].push({tgDate:parseDate(yl.tg),MA_LK:yl.MA_LK,loai:yl.loai,ten:yl.ten,tg:yl.tg}); }
+  const tmhSess=[];
+  for(const r of data.xml3){
+    if(!isTMH(r.TEN_DICH_VU)) continue;
+    const maBS=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim(); if(!maBS||maBS==='0') continue;
+    const tS=parseDate(r.NGAY_TH_YL||r.NGAY_YL); const tE=parseDate(r.NGAY_KQ);
+    if(!tS||!tE||tE<=tS) continue;
+    tmhSess.push({maBS,MA_LK:r.MA_LK,tenDV:r.TEN_DICH_VU||'Nội soi TMH',tStart:tS,tEnd:tE,tenBS:docFull(maBS),tenBN:hoSoMap[r.MA_LK]?.HO_TEN||'?',maBN:hoSoMap[r.MA_LK]?.MA_BN||'?'});
+  }
+  // Loại A: y lệnh trong giờ
+  for(const sess of tmhSess){
+    const ylTG=(ylByBS[sess.maBS]||[]).filter(yl=>yl.tgDate&&yl.tgDate>=sess.tStart&&yl.tgDate<=sess.tEnd);
+    if(!ylTG.length) continue;
+    const bnMap={};
+    for(const yl of ylTG){ if(!bnMap[yl.MA_LK]){const hs=hoSoMap[yl.MA_LK];bnMap[yl.MA_LK]={MA_LK:yl.MA_LK,tenBN:hs?.HO_TEN||'?',maBN:hs?.MA_BN||'?',isSameBN:yl.MA_LK===sess.MA_LK,yLenh:[]};} bnMap[yl.MA_LK].yLenh.push(yl); }
+    errors.xungdotNoiSoi.push({loaiLoi:'A',sess,conflictBNs:Object.values(bnMap)});
+  }
+  // Loại B: 2 ca chồng giờ
+  const rpPairs=new Set();
+  for(let i=0;i<tmhSess.length;i++){
+    const a=tmhSess[i]; const ov=[];
+    for(let j=0;j<tmhSess.length;j++){
+      if(i===j) continue; const b=tmhSess[j];
+      if(a.maBS!==b.maBS||a.MA_LK===b.MA_LK) continue;
+      if(a.tStart<b.tEnd&&b.tStart<a.tEnd){ const pk=[a.MA_LK,b.MA_LK].sort().join('|')+'|'+a.maBS; if(!rpPairs.has(pk)){ov.push(b);rpPairs.add(pk);} }
+    }
+    if(ov.length) errors.xungdotNoiSoi.push({loaiLoi:'B',mainSess:a,overlapSessions:ov});
+  }
+  errors.xungdotNoiSoi.sort((a,b)=>(a.sess||a.mainSess).tStart-(b.sess||b.mainSess).tStart);
+  log(`→ Nội soi TMH: ${errors.xungdotNoiSoi.filter(e=>e.loaiLoi==='A').length} ca có y lệnh trong giờ, ${errors.xungdotNoiSoi.filter(e=>e.loaiLoi==='B').length} ca chồng giờ`, errors.xungdotNoiSoi.length>0?'err':'ok');
+
+  // M4: X-QUANG
+  log('Kiểm tra X-quang...');
+  const tenToMa={};
+  for(const [ma,ten] of Object.entries(cchnMap)) tenToMa[ten.toLowerCase().trim()]=ma;
+  const XQ_PAIRS=[{docKQ:'võ hải triều',thucHien:'trần văn định'},{docKQ:'dương thị kim khuyến',thucHien:'nguyễn đức duy'}];
+  function normN(s){ return String(s||'').toLowerCase().normalize('NFC').replace(/\s+/g,' ').trim(); }
+  function matchN(a,b){ const n=normN(a),t=normN(b); return n===t||n.includes(t)||t.includes(n); }
+  const XQ_KW=['x-quang','xquang','x quang','chụp xq','chụp x-q','xray','x.quang','chụp phổi','chụp bụng','chụp xương','chụp cột sống','chụp khớp','chụp sọ','chụp ngực'];
+  const isXQ=t=>t&&XQ_KW.some(kw=>t.toLowerCase().includes(kw));
+  const xqRecs=[];
+  for(const r of data.xml3){
+    if(!isXQ(r.TEN_DICH_VU)) continue;
+    const maT=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim(); const hs=hoSoMap[r.MA_LK];
+    xqRecs.push({MA_LK:r.MA_LK,tenBN:hs?.HO_TEN||'?',maBN:hs?.MA_BN||'?',tenDV:r.TEN_DICH_VU||'X-quang',
+      maThucHien:maT,tenThucHien:cchnMap[maT]||maT,
+      tStart:parseDate(r.NGAY_TH_YL||r.NGAY_YL),tEnd:parseDate(r.NGAY_KQ),
+      tStartRaw:r.NGAY_TH_YL||r.NGAY_YL,tEndRaw:r.NGAY_KQ,maDVKT:r.MA_DICH_VU});
+  }
+  const xml4Map={};
+  if(data.xml4) for(const r of data.xml4){
+    const maBS=String(r.MA_BS_DOC_KQ||r.MA_BAC_SI||'').trim();
+    const k=(r.MA_LK||'')+'||'+(r.MA_DICH_VU||'');
+    if(!xml4Map[k]) xml4Map[k]={maDocKQ:maBS,tenDocKQ:cchnMap[maBS]||maBS};
+  }
+  const xq1=[],xq2=[],xq3=[];
+  for(const rec of xqRecs){
+    const dk=rec.MA_LK+'||'+(rec.maDVKT||''); const di=xml4Map[dk];
+    if(di){ const vp=XQ_PAIRS.find(p=>matchN(di.tenDocKQ,p.docKQ));
+      if(vp&&!matchN(rec.tenThucHien,vp.thucHien)) xq1.push({...rec,tenDocKQ:di.tenDocKQ,maDocKQ:di.maDocKQ,thucHienExpected:vp.thucHien,thucHienActual:rec.tenThucHien}); }
+    if(rec.tStart&&rec.tEnd){ const dur=minutesDiff(rec.tStart,rec.tEnd); if(dur!==4) xq2.push({...rec,durActual:dur}); }
+  }
+  const xqByTH={};
+  for(const rec of xqRecs){ if(!rec.tStart) continue; if(!xqByTH[rec.maThucHien]) xqByTH[rec.maThucHien]=[]; xqByTH[rec.maThucHien].push(rec); }
+  for(const recs of Object.values(xqByTH)){
+    recs.sort((a,b)=>a.tStart-b.tStart);
+    for(let i=0;i<recs.length-1;i++){
+      const c=recs[i],n=recs[i+1];
+      const gS=minutesDiff(c.tStart,n.tStart); const gE=c.tEnd&&n.tEnd?minutesDiff(c.tEnd,n.tEnd):null;
+      if(gS<2||(gE!==null&&gE<2)) xq3.push({caBefore:c,caAfter:n,gapStart:gS,gapEnd:gE,startTooClose:gS<2,endTooClose:gE!==null&&gE<2});
+    }
+  }
+  if(xq1.length) errors.xungdotXQ.push({loai:'XQ1',items:xq1});
+  if(xq2.length) errors.xungdotXQ.push({loai:'XQ2',items:xq2});
+  if(xq3.length) errors.xungdotXQ.push({loai:'XQ3',items:xq3});
+  const totalXQ=xq1.length+xq2.length+xq3.length;
+  log(`→ X-quang: ${xq1.length} sai cặp · ${xq2.length} sai thời gian · ${xq3.length} khoảng cách gần`, totalXQ>0?'err':'ok');
+
+  const grandTotal=errors.phanthan.length+errors.gioyLenhSauRaVien.length+errors.xungdotNoiSoi.length+totalXQ;
+  log(`Hoàn tất — phát hiện ${grandTotal} vấn đề.`, grandTotal>0?'err':'ok');
+
+  renderResults(errors);
+}
+
+// ─── RENDER ──────────────────────────────────────────────
+function renderResults(E) {
+  const div=document.getElementById('results'); div.innerHTML='';
+  const totalXQ=E.xungdotXQ.reduce((s,g)=>s+g.items.length,0);
+  const grand=E.phanthan.length+E.gioyLenhSauRaVien.length+E.xungdotNoiSoi.length+totalXQ;
+
+  // Update sidebar nav
+  const updateNav=(id,count,navId,ncId)=>{
+    const nav=document.getElementById(navId); const nc=document.getElementById(ncId);
+    if(count>0){ nav.classList.remove('nav-ok'); nav.classList.add('nav-err'); nc.textContent=count; nc.style.display=''; }
+    else { nav.classList.add('nav-ok'); nc.style.display='none'; }
+  };
+  updateNav('m1',E.phanthan.length,'nav-m1','ncount1');
+  updateNav('m2',E.gioyLenhSauRaVien.length,'nav-m2','ncount2');
+  updateNav('m3',E.xungdotNoiSoi.length,'nav-m3','ncount3');
+  updateNav('m4',totalXQ,'nav-m4','ncount4');
+
+  // Scorecard
+  const sc=document.createElement('div'); sc.className='scorecard';
+  sc.innerHTML=`
+    <div class="score-card total ${grand>0?'err':'ok'}">
+      <div class="score-n">${grand}</div>
+      <div class="score-label">Tổng vấn đề phát hiện</div>
+      <div class="score-sub">Từ ${(data.xml1?.length||0).toLocaleString('vi')} hồ sơ bệnh nhân</div>
+    </div>
+    <div class="score-card ${E.phanthan.length>0?'err':'ok'}">
+      <div class="score-n">${E.phanthan.length}</div>
+      <div class="score-label">Xung đột giờ bác sĩ</div>
+      <div class="score-sub">Phân thân & đọc CLS đồng thời</div>
+    </div>
+    <div class="score-card ${E.gioyLenhSauRaVien.length>0?'err':'ok'}">
+      <div class="score-n">${E.gioyLenhSauRaVien.length}</div>
+      <div class="score-label">Y lệnh thuốc bất hợp lệ</div>
+      <div class="score-sub">Sai giờ ra viện & trùng CLS</div>
+    </div>
+    <div class="score-card ${E.xungdotNoiSoi.length>0?'err':'ok'}">
+      <div class="score-n">${E.xungdotNoiSoi.length}</div>
+      <div class="score-label">Xung đột nội soi TMH</div>
+      <div class="score-sub">Y lệnh trong giờ & chồng giờ</div>
+    </div>
+    <div class="score-card ${totalXQ>0?'err':'ok'}">
+      <div class="score-n">${totalXQ}</div>
+      <div class="score-label">Vi phạm X-quang</div>
+      <div class="score-sub">Cặp người · thời gian · khoảng cách</div>
+    </div>`;
+  div.appendChild(sc);
+
+  if(grand===0){ div.innerHTML+=`<div class="empty-state"><div class="empty-ico">✅</div><div class="empty-msg">Không phát hiện vấn đề nào trong dữ liệu đã tải.</div></div>`; return; }
+
+  // ── M1: XUNG ĐỘT LỊCH CÔNG TÁC ──────────────────────────────
+  if(E.phanthan.length>0){
+    const mod=makeModule('mod-phanthan','Xung đột Giờ Bác sĩ','Phân thân · Đọc CLS đồng thời y lệnh',E.phanthan.length,'','🗓');
+    const bsMap={};
+    for(const e of E.phanthan){ if(!bsMap[e.maBS]) bsMap[e.maBS]={maBS:e.maBS,tenBS:e.tenBS,caList:[]}; bsMap[e.maBS].caList.push(e); }
+    const bsList=Object.values(bsMap);
+    const md=document.createElement('div'); md.className='master-detail';
+    const ml=document.createElement('div'); ml.className='master-list';
+    ml.innerHTML=`<div class="master-sticky">Bác sĩ bị lỗi <span class="chip chip-red">${bsList.length}</span></div>`;
+    const dp=document.createElement('div'); dp.className='detail-panel';
+    bsList.forEach((bs,i)=>{
+      const ylN=bs.caList.filter(c=>c.type==='phanthan').length;
+      const clN=bs.caList.filter(c=>c.type==='cls').length;
+      const item=document.createElement('div'); item.className='master-item'+(i===0?' active':'');
+      item.innerHTML=`<div class="master-name">${bs.tenBS}</div><div class="master-meta">${ylN>0?`<span class="chip chip-red">${ylN} phân thân</span>`:''} ${clN>0?`<span class="chip chip-amber">${clN} đọc CLS</span>`:''}</div>`;
+      item.onclick=()=>{ md.querySelectorAll('.master-item').forEach(x=>x.classList.remove('active')); item.classList.add('active'); renderBSDetail(dp,bs); };
+      ml.appendChild(item);
+    });
+    md.appendChild(ml); md.appendChild(dp);
+    mod.querySelector('.module-body').appendChild(md);
+    div.appendChild(mod);
+    if(bsList.length) renderBSDetail(dp,bsList[0]);
+  }
+
+  // ── M2: Y LỆNH THUỐC ─────────────────────────────────────────
+  if(E.gioyLenhSauRaVien.length>0){
+    const mod=makeModule('mod-yeLenh','Y lệnh Thuốc Bất hợp lệ','Sau giờ ra viện · Trùng thời điểm kết quả CLS',E.gioyLenhSauRaVien.length,'amber','💊');
+    const afterRA=E.gioyLenhSauRaVien.filter(e=>e.thuocLoi.some(t=>t.isAfterRA));
+    const trungCLS=E.gioyLenhSauRaVien.filter(e=>e.thuocLoi.some(t=>t.isTrungCLS));
+    if(afterRA.length) mod.querySelector('.module-body').appendChild(makeSub('Chỉ định thuốc sau giờ ra viện',afterRA.length,'',buildDrugTable(afterRA,'afterRA')));
+    if(trungCLS.length) mod.querySelector('.module-body').appendChild(makeSub('Thời điểm y lệnh trùng khớp kết quả CLS cùng bệnh nhân',trungCLS.length,'amber',buildDrugTable(trungCLS,'trungCLS')));
+    div.appendChild(mod);
+  }
+
+  // ── M3: NỘI SOI TMH ──────────────────────────────────────────
+  if(E.xungdotNoiSoi.length>0){
+    const loaiA=E.xungdotNoiSoi.filter(e=>e.loaiLoi==='A');
+    const loaiB=E.xungdotNoiSoi.filter(e=>e.loaiLoi==='B');
+    const mod=makeModule('mod-noisoi','Vi phạm Nội soi Tai Mũi Họng','Y lệnh trong giờ thủ thuật · Chồng giờ hai ca',E.xungdotNoiSoi.length,'violet','👃');
+    if(loaiA.length){
+      let rows='';
+      for(const e of loaiA){
+        const s=e.sess; const dur=minutesDiff(s.tStart,s.tEnd);
+        const bns=e.conflictBNs.map(b=>{
+          const pills=b.yLenh.map(yl=>`<span class="pill ${yl.loai==='Thuốc'?'pill-drug':'pill-svc'}">${yl.loai==='Thuốc'?'💊':'🔬'} ${yl.ten}</span>`).join(' ');
+          return `<div class="bn-row"><div class="bn-name">${b.tenBN} <span class="bn-code">${b.maBN}</span> ${b.isSameBN?'<span class="chip chip-amber" style="font-size:10px">BN đang nội soi</span>':'<span class="chip chip-red" style="font-size:10px">BN khác</span>'}</div><div class="bn-pills">${pills}</div></div>`;
+        }).join('');
+        rows+=`<tr><td>${s.MA_LK}</td><td><b>${s.tenBS}</b></td><td><b>${s.tenDV}</b><br><span class="bn-code">${s.tenBN} · ${s.maBN}</span><br>
+          <span class="time-range"><span class="time-val">${fmtDate(s.tStart)}</span><span class="sep">→</span><span class="time-val">${fmtDate(s.tEnd)}</span></span><span class="dur-badge">${dur} phút</span></td><td>${bns}</td></tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub('Y lệnh xuất hiện trong thời gian thực hiện thủ thuật',loaiA.length,'',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã HS</th><th>Bác sĩ</th><th>Ca nội soi đang thực hiện</th><th>Y lệnh xung đột</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    if(loaiB.length){
+      let rows='';
+      for(const e of loaiB){
+        const a=e.mainSess; const dA=minutesDiff(a.tStart,a.tEnd);
+        const ovStr=e.overlapSessions.map(b=>{
+          const dB=minutesDiff(b.tStart,b.tEnd);
+          const oS=a.tStart>b.tStart?a.tStart:b.tStart; const oE=a.tEnd<b.tEnd?a.tEnd:b.tEnd;
+          return `<div class="bn-row"><div class="bn-name">${b.tenBN} <span class="bn-code">${b.maBN}</span> <span class="chip chip-red" style="font-size:10px">Chồng ${minutesDiff(oS,oE)} phút</span></div>
+            <span class="time-range"><span class="time-val">${fmtDate(b.tStart)}</span><span class="sep">→</span><span class="time-val">${fmtDate(b.tEnd)}</span></span><span class="dur-badge">${dB} phút</span></div>`;
+        }).join('');
+        rows+=`<tr><td>${a.MA_LK}</td><td><b>${a.tenBS}</b></td><td><b>${a.tenDV}</b><br><span class="bn-code">${a.tenBN} · ${a.maBN}</span><br>
+          <span class="time-range"><span class="time-val">${fmtDate(a.tStart)}</span><span class="sep">→</span><span class="time-val">${fmtDate(a.tEnd)}</span></span><span class="dur-badge">${dA} phút</span></td><td>${ovStr}</td></tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub('Hai ca nội soi của cùng bác sĩ có khoảng thời gian chồng nhau',loaiB.length,'amber',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã HS</th><th>Bác sĩ</th><th>Ca đang thực hiện</th><th>Ca chồng giờ</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    div.appendChild(mod);
+  }
+
+  // ── M4: X-QUANG ──────────────────────────────────────────────
+  if(totalXQ>0){
+    const mod=makeModule('mod-xquang','Vi phạm Chẩn đoán Hình ảnh X-quang','Sai cặp · Sai thời gian · Khoảng cách không hợp lệ',totalXQ,'blue','🩻');
+    const gXQ1=E.xungdotXQ.find(g=>g.loai==='XQ1');
+    const gXQ2=E.xungdotXQ.find(g=>g.loai==='XQ2');
+    const gXQ3=E.xungdotXQ.find(g=>g.loai==='XQ3');
+    if(gXQ1){
+      let rows='';
+      for(const e of gXQ1.items) rows+=`<tr><td>${e.MA_LK}</td><td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td><td>${e.tenDV}</td><td><span class="t-pill">${fmtDate(e.tStartRaw)}</span></td>
+        <td><span class="chip chip-blue">📖 ${e.tenDocKQ}</span></td>
+        <td><div><span class="chip chip-red">Thực tế: ${e.thucHienActual}</span></div><div style="margin-top:5px"><span class="chip chip-amber">Phải là: ${e.thucHienExpected}</span></div></td></tr>`;
+      mod.querySelector('.module-body').appendChild(makeSub('Sai cặp người thực hiện / đọc kết quả X-quang',gXQ1.items.length,'',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã HS</th><th>Bệnh nhân</th><th>Dịch vụ</th><th>Ngày thực hiện</th><th>Người đọc KQ</th><th>Người thực hiện</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    if(gXQ2){
+      let rows='';
+      for(const e of gXQ2.items){
+        const short=e.durActual<4;
+        rows+=`<tr><td>${e.MA_LK}</td><td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td><td>${e.tenDV}</td><td>${e.tenThucHien}</td>
+          <td><span class="t-pill">${fmtDate(e.tStartRaw)}</span></td><td><span class="t-pill">${fmtDate(e.tEndRaw)}</span></td>
+          <td><span class="chip ${short?'chip-amber':'chip-red'}">${e.durActual} phút ${short?'(quá ngắn)':'(quá dài)'}</span><br><span class="bn-code">Chuẩn: 4 phút</span></td></tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub('Thời gian ca chụp không đúng 4 phút (NGAY_KQ − NGAY_TH_YL ≠ 4)',gXQ2.items.length,'amber',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã HS</th><th>Bệnh nhân</th><th>Dịch vụ</th><th>Người TH</th><th>Ngày TH</th><th>Ngày KQ</th><th>Thời gian</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    if(gXQ3){
+      let rows='';
+      for(const e of gXQ3.items){
+        const a=e.caBefore,b=e.caAfter;
+        const sB=e.startTooClose?`<span class="chip chip-red">Ngày TH cách ${e.gapStart} phút</span>`:`<span class="chip chip-green">✓ Ngày TH ${e.gapStart} phút</span>`;
+        const eB=e.gapEnd!==null?(e.endTooClose?`<span class="chip chip-red">Ngày KQ cách ${e.gapEnd} phút</span>`:`<span class="chip chip-green">✓ Ngày KQ ${e.gapEnd} phút</span>`):`<span class="chip chip-muted">Ngày KQ: không có</span>`;
+        rows+=`<tr><td>${a.tenThucHien}</td>
+          <td><b>${a.tenBN}</b> <span class="bn-code">${a.maBN}</span><br><span class="time-range"><span class="time-val">${fmtDate(a.tStartRaw)}</span><span class="sep">→</span><span class="time-val">${fmtDate(a.tEndRaw)}</span></span></td>
+          <td><b>${b.tenBN}</b> <span class="bn-code">${b.maBN}</span><br><span class="time-range"><span class="time-val">${fmtDate(b.tStartRaw)}</span><span class="sep">→</span><span class="time-val">${fmtDate(b.tEndRaw)}</span></span></td>
+          <td><div>${sB}</div><div style="margin-top:5px">${eB}</div></td></tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub('Khoảng cách giữa 2 ca X-quang liên tiếp < 2 phút (cùng người thực hiện)',gXQ3.items.length,'amber',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Người thực hiện</th><th>Ca trước</th><th>Ca kế tiếp</th><th>Khoảng cách</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    div.appendChild(mod);
+  }
+}
+
+function renderBSDetail(panel, bs){
+  let html=`<div class="detail-bs-header"><div class="detail-bs-name">👨‍⚕️ ${bs.tenBS}</div><span class="chip chip-red">${bs.caList.length} ca lỗi</span></div>`;
+  bs.caList.forEach((ca,i)=>{
+    const isCLS=ca.type==='cls';
+    const bnRows=ca.benhNhanList.map(b=>{
+      let pills='';
+      if(b.hasCLS) pills+=`<span class="pill pill-cls">📊 Đọc KQ CLS</span> `;
+      pills+=(b.yLenh||[]).map(yl=>`<span class="pill ${yl.loai==='Thuốc'?'pill-drug':'pill-svc'}">${yl.loai==='Thuốc'?'💊':'🔬'} ${yl.ten}</span>`).join(' ');
+      return `<div class="bn-row"><div class="bn-name">${b.tenBN} <span class="bn-code">${b.maBN}</span></div><div class="bn-pills">${pills||'<span style="color:var(--faint);font-size:11px">—</span>'}</div></div>`;
+    }).join('');
+    html+=`<div class="incident-card ${isCLS?'cls-type':''}">
+      <div class="incident-head">
+        <span class="incident-num">Ca #${i+1}</span>
+        <span class="incident-time">🕐 ${fmtDate(ca.thoiGian)}</span>
+        <span class="chip ${isCLS?'chip-amber':'chip-red'}">${isCLS?'📊 Đọc CLS đồng thời y lệnh':'⚡ Y lệnh nhiều BN cùng lúc'}</span>
+        <span class="chip chip-muted" style="margin-left:auto">${ca.soLuong} BN</span>
+      </div>
+      <div class="incident-body">${bnRows}</div>
+    </div>`;
+  });
+  panel.innerHTML=html;
+}
+
+function buildDrugTable(list, mode){
+  let rows='';
+  for(const e of list){
+    const rel=mode==='afterRA'?e.thuocLoi.filter(t=>t.isAfterRA):e.thuocLoi.filter(t=>t.isTrungCLS);
+    const tStr=rel.map(t=>{
+      let tag=t.isAfterRA&&t.chenhLech?`<span class="chip chip-red">+${t.chenhLech}</span> `:'';
+      if(t.isTrungCLS) tag+=`<span class="chip chip-amber">Trùng giờ CLS</span>`;
+      return `<div style="margin-bottom:4px"><span class="pill pill-drug">💊 ${t.thuoc}</span> <span class="t-inline">${fmtDate(t.ngayYL)}</span> ${tag}</div>`;
+    }).join('');
+    rows+=`<tr><td>${e.MA_LK}</td><td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td><td>${e.tenBS}</td><td>${e.ngayRA?`<span class="t-pill">${fmtDate(e.ngayRA)}</span>`:'—'}</td><td>${tStr}</td></tr>`;
+  }
+  return `<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã hồ sơ</th><th>Bệnh nhân</th><th>Bác sĩ</th><th>Giờ ra viện</th><th>Thuốc vi phạm</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function makeModule(id,title,sub,count,accent,icon){
+  const cls=accent?`module-header ${accent}`:'module-header';
+  const div=document.createElement('div'); div.className='module'; div.id=id;
+  div.innerHTML=`
+    <div class="${cls}" onclick="toggleMod(this)">
+      <span class="module-icon">${icon}</span>
+      <div style="flex:1;min-width:0">
+        <div class="module-title">${title}</div>
+        <div class="module-meta">${sub}</div>
+      </div>
+      <span class="module-count">${count}</span>
+      <span class="module-chevron">▾</span>
+    </div>
+    <div class="module-body"></div>`;
+  return div;
+}
+
+function makeSub(title,count,accent,innerHTML){
+  const div=document.createElement('div'); div.className='sub-group';
+  div.innerHTML=`
+    <div class="sub-header ${accent||''}" onclick="toggleSub(this)">
+      <span class="sub-title">${title}</span>
+      <span class="sub-count">${count}</span>
+      <span class="sub-chevron">▾</span>
+    </div>
+    <div class="sub-body">${innerHTML}</div>`;
+  return div;
+}
+
+function toggleMod(h){ const m=h.closest('.module'); m.classList.toggle('collapsed'); }
+function toggleSub(h){ const s=h.closest('.sub-group'); s.classList.toggle('collapsed'); }
+</script>
+</body>
+</html>
