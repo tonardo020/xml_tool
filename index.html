@@ -491,6 +491,10 @@ body {
       <span class="nav-dot"></span>Chồng giờ Siêu âm – XQ
       <span class="nav-count" id="ncount5" style="display:none">0</span>
     </a>
+    <a class="nav-item nav-ok" id="nav-m6" href="#mod-dietim" onclick="scrollTo('mod-dietim')">
+      <span class="nav-dot"></span>Điện tim – Nội soi thực quản
+      <span class="nav-count" id="ncount6" style="display:none">0</span>
+    </a>
   </nav>
 
   <!-- MAIN -->
@@ -649,7 +653,7 @@ function runAnalysis() {
   function docFull(maBS){ const m=String(maBS||'').trim(); const t=cchnMap[m]; return t?`${t} (${m})`:m; }
   function docName(maBS){ const m=String(maBS||'').trim(); return cchnMap[m]||m; }
 
-  const errors={ phanthan:[], gioyLenhSauRaVien:[], khamTrungThuoc:[], xungdotNoiSoi:[], xungdotXQ:[], sieuAmXQ:[] };
+  const errors={ phanthan:[], gioyLenhSauRaVien:[], khamTrungThuoc:[], xungdotNoiSoi:[], xungdotXQ:[], sieuAmXQ:[], dienTim_noiSoi:[] };
 
   // Y lệnh tổng hợp (XML2+XML3)
   const yLenh=[];
@@ -1005,7 +1009,125 @@ function runAnalysis() {
   if(sa3.length) errors.sieuAmXQ.push({loai:'SA3',items:sa3});
   log(`→ Siêu âm–XQ: SA-1 chồng giờ cùng BS ${sa1.length} · SA-2 chồng giờ cùng BN ${sa2.length} · SA-3 đọc XQ trong giờ SA ${sa3.length}`, totalSA>0?'err':'ok');
 
-  const grandTotal=errors.phanthan.length+errors.gioyLenhSauRaVien.length+errors.khamTrungThuoc.length+errors.xungdotNoiSoi.length+totalXQ+totalSA;
+  // ══════════════════════════════════════════════════════
+  // M6: ĐIỆN TIM - NỘI SOI THỰC QUẢN
+  //
+  // [RULE-1] KHOẢNG CÁCH ĐIỆN TIM CÙNG MÃ MÁY:
+  //   Nếu cùng bác sĩ thực hiện điện tim (phân biệt theo mã máy ĐT), 
+  //   thời gian thực hiện Y lệnh ca liền kề sau phải cách ca trước >= 4 phút.
+  //
+  // [RULE-2] ĐIỆN TIM TRƯỚC NỘI SOI THỰC QUẢN:
+  //   Nếu BN vừa có CLS điện tim vừa có nội soi thực quản dạ dày, tá tràng,
+  //   thì kết quả điện tim phải cách từ 3 phút trở lên mới được bắt đầu
+  //   thực hiện y lệnh nội soi dạ dày, tá tràng.
+  // ══════════════════════════════════════════════════════
+  log('Kiểm tra điện tim – nội soi thực quản...');
+
+  // Từ khóa nhận diện dịch vụ ĐIỆN TIM (XML3)
+  const DT_KW=['điện tim','dien tim','ecg','điện sinh học tim','ekg','điện tâm đồ'];
+  const isDT=t=>t&&DT_KW.some(kw=>t.toLowerCase().includes(kw));
+
+  // Từ khóa nhận diện dịch vụ NỘI SOI THỰC QUẢN (XML3)
+  const NSDAQ_KW=['nội soi thực quản','nội soi thực quyản','endoscopy dạ dày','nội soi dạ dày','nội soi tá tràng','nội soi tiêu hóa','endoscopy','egds'];
+  const isNSDAQ=t=>t&&NSDAQ_KW.some(kw=>t.toLowerCase().includes(kw));
+
+  const dt_rule1=[], dt_rule2=[];
+
+  // Thu thập tất cả ca điện tim theo bác sĩ
+  const dtByBS={};
+  for(const r of data.xml3){
+    if(!isDT(r.TEN_DICH_VU)) continue;
+    const maBS=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim();
+    const maMay=String(r.MA_DICH_VU||'').trim(); // mã máy điện tim
+    if(!maBS||maBS==='0') continue;
+    const tStart=parseDate(r.NGAY_TH_YL||r.NGAY_YL);
+    if(!tStart) continue;
+    const key=maBS+'||'+maMay;
+    if(!dtByBS[key]) dtByBS[key]={maBS,maMay,items:[]};
+    dtByBS[key].items.push({tStart,tStartRaw:r.NGAY_TH_YL||r.NGAY_YL,MA_LK:r.MA_LK,tenDV:r.TEN_DICH_VU,tEnd:parseDate(r.NGAY_KQ),tEndRaw:r.NGAY_KQ});
+  }
+
+  // RULE-1: Kiểm tra khoảng cách >= 4 phút giữa các ca liên tiếp cùng BS, cùng mã máy
+  // So sánh NGAY_TH_YL (ca trước) → NGAY_TH_YL (ca sau)
+  for(const key of Object.keys(dtByBS)){
+    const group=dtByBS[key];
+    group.items.sort((a,b)=>a.tStart-b.tStart);
+    for(let i=0;i<group.items.length-1;i++){
+      const curr=group.items[i];
+      const next=group.items[i+1];
+      if(!curr.tStart||!next.tStart) continue;
+      const gapMin=minutesDiff(curr.tStart,next.tStart);
+      if(gapMin<4){
+        const hs1=hoSoMap[curr.MA_LK];
+        const hs2=hoSoMap[next.MA_LK];
+        dt_rule1.push({
+          type:'rule1',
+          maBS:group.maBS,
+          tenBS:docFull(group.maBS),
+          maMay:group.maMay,
+          caBefore:{MA_LK:curr.MA_LK,tenBN:hs1?.HO_TEN||'?',maBN:hs1?.MA_BN||'?',tenDV:curr.tenDV,tStart:curr.tStart,tEnd:curr.tEnd},
+          caAfter:{MA_LK:next.MA_LK,tenBN:hs2?.HO_TEN||'?',maBN:hs2?.MA_BN||'?',tenDV:next.tenDV,tStart:next.tStart,tEnd:next.tEnd},
+          gapMin,
+          error:`Khoảng cách ${gapMin} phút < 4 phút`
+        });
+      }
+    }
+  }
+
+  // RULE-2: Kiểm tra khoảng cách điện tim → nội soi thực quản >= 3 phút
+  const dtByBN={};
+  for(const r of data.xml3){
+    if(!isDT(r.TEN_DICH_VU)) continue;
+    const MA_LK=r.MA_LK;
+    if(!MA_LK) continue;
+    const tEnd=parseDate(r.NGAY_KQ);
+    if(!tEnd) continue;
+    if(!dtByBN[MA_LK]) dtByBN[MA_LK]={items:[]};
+    dtByBN[MA_LK].items.push({tEnd,tEndRaw:r.NGAY_KQ,tenDV:r.TEN_DICH_VU});
+  }
+
+  const nsDAQByBN={};
+  for(const r of data.xml3){
+    if(!isNSDAQ(r.TEN_DICH_VU)) continue;
+    const MA_LK=r.MA_LK;
+    const maBS=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim();
+    if(!MA_LK||!maBS||maBS==='0') continue;
+    const tStart=parseDate(r.NGAY_TH_YL||r.NGAY_YL);
+    if(!tStart) continue;
+    if(!nsDAQByBN[MA_LK]) nsDAQByBN[MA_LK]={items:[]};
+    nsDAQByBN[MA_LK].items.push({tStart,tStartRaw:r.NGAY_TH_YL||r.NGAY_YL,maBS,tenBS:docFull(maBS),tenDV:r.TEN_DICH_VU});
+  }
+
+  for(const malk of Object.keys(dtByBN)){
+    const dtList=dtByBN[malk]?.items||[];
+    const nsList=nsDAQByBN[malk]?.items||[];
+    if(!dtList.length||!nsList.length) continue;
+    const hs=hoSoMap[malk];
+    for(const dt of dtList){
+      for(const ns of nsList){
+        const gapMin=minutesDiff(dt.tEnd,ns.tStart);
+        if(gapMin<3){
+          dt_rule2.push({
+            type:'rule2',
+            MA_LK:malk,
+            tenBN:hs?.HO_TEN||'?',
+            maBN:hs?.MA_BN||'?',
+            dienTim:{tEnd:dt.tEnd,tenDV:dt.tenDV},
+            noiSoi:{tStart:ns.tStart,maBS:ns.maBS,tenBS:ns.tenBS,tenDV:ns.tenDV},
+            gapMin,
+            error:`Khoảng cách ${gapMin} phút < 3 phút`
+          });
+        }
+      }
+    }
+  }
+
+  if(dt_rule1.length) errors.dienTim_noiSoi.push({rule:'rule1',items:dt_rule1});
+  if(dt_rule2.length) errors.dienTim_noiSoi.push({rule:'rule2',items:dt_rule2});
+  const totalDT=dt_rule1.length+dt_rule2.length;
+  log(`→ Điện tim–Nội soi: Rule-1 khoảng cách ca liên tiếp ${dt_rule1.length} · Rule-2 điện tim→nội soi ${dt_rule2.length}`, totalDT>0?'err':'ok');
+
+  const grandTotal=errors.phanthan.length+errors.gioyLenhSauRaVien.length+errors.khamTrungThuoc.length+errors.xungdotNoiSoi.length+totalXQ+totalSA+totalDT;
   log(`Hoàn tất — phát hiện ${grandTotal} vấn đề.`, grandTotal>0?'err':'ok');
 
   renderResults(errors);
@@ -1016,7 +1138,8 @@ function renderResults(E) {
   const div=document.getElementById('results'); div.innerHTML='';
   const totalXQ=E.xungdotXQ.reduce((s,g)=>s+g.items.length,0);
   const totalSA=E.sieuAmXQ.reduce((s,g)=>s+g.items.length,0);
-  const grand=E.phanthan.length+E.gioyLenhSauRaVien.length+E.khamTrungThuoc.length+E.xungdotNoiSoi.length+totalXQ+totalSA;
+  const totalDT=E.dienTim_noiSoi.reduce((s,g)=>s+g.items.length,0);
+  const grand=E.phanthan.length+E.gioyLenhSauRaVien.length+E.khamTrungThuoc.length+E.xungdotNoiSoi.length+totalXQ+totalSA+totalDT;
 
   // Update sidebar nav
   const updateNav=(id,count,navId,ncId)=>{
@@ -1029,6 +1152,7 @@ function renderResults(E) {
   updateNav('m3',E.xungdotNoiSoi.length,'nav-m3','ncount3');
   updateNav('m4',totalXQ,'nav-m4','ncount4');
   updateNav('m5',totalSA,'nav-m5','ncount5');
+  updateNav('m6',totalDT,'nav-m6','ncount6');
 
   // Scorecard
   const sc=document.createElement('div'); sc.className='scorecard';
@@ -1062,6 +1186,11 @@ function renderResults(E) {
       <div class="score-n">${totalSA}</div>
       <div class="score-label">Chồng giờ Siêu âm – XQ</div>
       <div class="score-sub">Cùng BS · cùng BN · đọc XQ trong giờ SA</div>
+    </div>
+    <div class="score-card ${totalDT>0?'err':'ok'}">
+      <div class="score-n">${totalDT}</div>
+      <div class="score-label">Điện tim – Nội soi</div>
+      <div class="score-sub">Khoảng cách ca · thời gian chuyển tiếp</div>
     </div>`;
   div.appendChild(sc);
 
@@ -1323,6 +1452,86 @@ function renderResults(E) {
         gSA3.items.length,'amber',
         `<div class="dt-wrap"><table class="dt">
           <thead><tr><th>Bác sĩ</th><th>Ca siêu âm đang thực hiện</th><th>KQ XQ đọc trong giờ SA</th><th>Thời điểm xung đột</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      ));
+    }
+
+    div.appendChild(mod);
+  }
+
+  // ── M6: ĐIỆN TIM – NỘI SOI THỰC QUẢN ─────────────────────
+  if(totalDT>0){
+    const mod=makeModule('mod-dietim','Điện tim – Nội soi Thực quản','Khoảng cách ca liên tiếp · Khoảng cách điện tim → nội soi',totalDT,'violet','⚡');
+    const gDT1=E.dienTim_noiSoi.find(g=>g.rule==='rule1');
+    const gDT2=E.dienTim_noiSoi.find(g=>g.rule==='rule2');
+
+    // RULE-1: Khoảng cách điện tim cùng mã máy < 4 phút
+    if(gDT1){
+      let rows='';
+      for(const e of gDT1.items){
+        rows+=`<tr>
+          <td><b>${e.tenBS}</b><br><span class="bn-code">Máy: ${e.maMay||'—'}</span></td>
+          <td>
+            <b>${e.caBefore.tenBN}</b><br>
+            <span class="bn-code">${e.caBefore.maBN}</span><br>
+            <span class="time-range">
+              <span class="time-val">${fmtDate(e.caBefore.tStart)}</span>
+              <span class="sep">→</span>
+              <span class="time-val">${fmtDate(e.caBefore.tEnd)}</span>
+            </span>
+          </td>
+          <td>
+            <b>${e.caAfter.tenBN}</b><br>
+            <span class="bn-code">${e.caAfter.maBN}</span><br>
+            <span class="time-range">
+              <span class="time-val">${fmtDate(e.caAfter.tStart)}</span>
+              <span class="sep">→</span>
+              <span class="time-val">${fmtDate(e.caAfter.tEnd)}</span>
+            </span>
+          </td>
+          <td style="text-align:center"><span class="chip chip-red">Khoảng ${e.gapMin} phút</span></td>
+        </tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Khoảng cách ca điện tim liên tiếp < 4 phút (cùng bác sĩ, cùng mã máy)',
+        gDT1.items.length,'red',
+        `<div class="dt-wrap"><table class="dt">
+          <thead><tr><th>Bác sĩ & Máy</th><th>Ca trước</th><th>Ca kế tiếp</th><th>Khoảng cách</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      ));
+    }
+
+    // RULE-2: Khoảng cách điện tim → nội soi < 3 phút
+    if(gDT2){
+      let rows='';
+      for(const e of gDT2.items){
+        rows+=`<tr>
+          <td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td>
+          <td>
+            <span class="pill pill-svc">🔬 ${e.dienTim.tenDV}</span><br>
+            <span class="time-range" style="margin-top:4px">
+              <span class="time-val">${fmtDate(e.dienTim.tEnd)}</span>
+              <span class="sep" style="margin:0 4px">KQ</span>
+            </span>
+          </td>
+          <td>
+            <span class="pill pill-svc">🔬 ${e.noiSoi.tenDV}</span><br>
+            <span class="bn-code">${e.noiSoi.tenBS}</span><br>
+            <span class="time-range" style="margin-top:4px">
+              <span class="time-val">${fmtDate(e.noiSoi.tStart)}</span>
+              <span class="sep" style="margin:0 4px">TH</span>
+            </span>
+          </td>
+          <td style="text-align:center"><span class="chip chip-red">+${e.gapMin} phút</span><br><span class="bn-code">(Chuẩn ≥3 phút)</span></td>
+        </tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Khoảng cách từ kết quả điện tim đến bắt đầu nội soi thực quản < 3 phút',
+        gDT2.items.length,'amber',
+        `<div class="dt-wrap"><table class="dt">
+          <thead><tr><th>Bệnh nhân</th><th>Điện tim (KQ)</th><th>Nội soi Thực quản (TH)</th><th>Khoảng cách</th></tr></thead>
           <tbody>${rows}</tbody>
         </table></div>`
       ));
