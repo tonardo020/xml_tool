@@ -682,7 +682,7 @@ function runAnalysis() {
     clsIndex[k].push({maBS,tg,MA_LK:r.MA_LK});
   }
 
-  // M1a: PHÂN THÂN y lệnh
+  // M1: PHÂN THÂN y lệnh
   log('Kiểm tra xung đột giờ bác sĩ...');
   const ylGrp={};
   for(const yl of yLenh){
@@ -697,8 +697,6 @@ function runAnalysis() {
       benhNhanList:malks.map(malk=>{ const hs=hoSoMap[malk]; return{malk,tenBN:hs?.HO_TEN||'?',maBN:hs?.MA_BN||'?',yLenh:g.items.filter(x=>x.MA_LK===malk)}; }),
       soLuong:malks.length});
   }
-
-  // M1b: ĐỌC CLS đồng thời y lệnh
   for(const clsKey of Object.keys(clsIndex)){
     const cls=clsIndex[clsKey]; const yls=ylIndex[clsKey]||[];
     if(!yls.length) continue;
