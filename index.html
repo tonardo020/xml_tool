@@ -1097,7 +1097,7 @@ function runAnalysis() {
     for(let j=0;j<tmhSess.length;j++){
       if(i===j) continue; const b=tmhSess[j];
       if(a.maBS!==b.maBS||a.MA_LK===b.MA_LK) continue;
-      if(a.tStart<b.tEnd&&b.tStart<a.tEnd){ const pk=[a.MA_LK,b.MA_LK].sort().join('|')+'|'+a.maBS; if(!rpPairs.has(pk)){ov.push(b);rpPairs.add(pk);} }
+      if(a.tStart<=b.tEnd&&b.tStart<=a.tEnd){ const pk=[a.MA_LK,b.MA_LK].sort().join('|')+'|'+a.maBS; if(!rpPairs.has(pk)){ov.push(b);rpPairs.add(pk);} }
     }
     if(ov.length) errors.xungdotNoiSoi.push({loaiLoi:'B',mainSess:a,overlapSessions:ov});
   }
@@ -1206,7 +1206,7 @@ function runAnalysis() {
       const b=saSessions[j];
       if(a.maBS!==b.maBS) continue;
       if(a.MA_LK===b.MA_LK) continue; // cùng BN: không tính (dữ liệu trùng)
-      if(a.tStart<b.tEnd && b.tStart<a.tEnd){
+      if(a.tStart<=b.tEnd && b.tStart<=a.tEnd){
         const pk=[a.MA_LK,b.MA_LK].sort().join('|')+'|'+a.maBS;
         if(!sa1Pairs.has(pk)){
           sa1Pairs.add(pk);
@@ -1225,7 +1225,7 @@ function runAnalysis() {
       const b=saSessions[j];
       if(a.MA_LK!==b.MA_LK) continue;  // phải cùng BN
       if(a.maBS===b.maBS) continue;     // phải khác BS (cùng BS đã xử lý ở SA-1)
-      if(a.tStart<b.tEnd && b.tStart<a.tEnd){
+      if(a.tStart<=b.tEnd && b.tStart<=a.tEnd){
         const pk=[a.maBS,b.maBS].sort().join('|')+'|'+a.MA_LK;
         if(!sa2Pairs.has(pk)){
           sa2Pairs.add(pk);
