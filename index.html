@@ -1,0 +1,2105 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedAudit — Hệ thống Kiểm tra Hồ sơ BHYT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* ─── TOKENS ─────────────────────────────────────────── */
+:root {
+  --paper:     #F4F6FB;
+  --surface:   #FFFFFF;
+  --sunken:    #EEF1F9;
+  --line:      #E3E7F1;
+  --line-strong:#CBD3E6;
+  --ink:       #0F1729;
+  --ink-soft:  #5A6478;
+  --ink-faint: #9AA3B8;
+
+  --brand:      #2454E8;
+  --brand-dark: #1B3FBE;
+  --brand-soft: #E8EDFC;
+
+  --red:       #DC2626;
+  --red-dim:   #FCEAEA;
+  --red-line:  rgba(220,38,38,0.22);
+
+  --amber:     #B4660A;
+  --amber-dim: #FBF0DE;
+  --amber-line:rgba(180,102,10,0.22);
+
+  --green:     #138755;
+  --green-dim: #E6F7EF;
+  --green-line:rgba(19,135,85,0.22);
+
+  --blue:      #0E84A8;
+  --blue-dim:  #E3F3F8;
+  --blue-line: rgba(14,132,168,0.22);
+
+  --violet:    #6E3FD6;
+  --violet-dim:#F0EAFC;
+  --violet-line:rgba(110,63,214,0.22);
+
+  --mono:    'JetBrains Mono', ui-monospace, monospace;
+  --sans:    'Manrope', -apple-system, sans-serif;
+  --display: 'Space Grotesk', var(--sans);
+
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px;
+  --shadow-card: 0 1px 2px rgba(15,23,41,0.05), 0 1px 0 rgba(15,23,41,0.03);
+  --shadow-pop:  0 8px 20px rgba(15,23,41,0.08);
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+@keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+@keyframes slideInRight { from { opacity:0; transform:translateX(-16px); } to { opacity:1; transform:translateX(0); } }
+@keyframes countUp { from { opacity:0; } to { opacity:1; } }
+@keyframes pulse-glow { 0%, 100% { opacity:1; } 50% { opacity:0.7; } }
+@keyframes shimmer { 0% { background-position: -1000px 0; } 100% { background-position: 1000px 0; } }
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after { transition:none!important; animation:none!important; } }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* ─── TOPBAR ─────────────────────────────────────────── */
+.topbar {
+  position: sticky; top:0; z-index:100;
+  background: rgba(244,246,251,0.88);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center;
+  padding: 0 28px; height: 58px; gap: 16px;
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.brand-mark {
+  width: 30px; height: 30px;
+  background: linear-gradient(155deg, var(--brand), var(--brand-dark));
+  border-radius: 8px;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(36,84,232,0.35);
+}
+.brand-mark svg { width:16px; height:16px; fill:white; }
+.brand-name { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }
+.brand-sep { color: var(--ink-faint); margin: 0 4px; }
+.brand-sub { font-size: 12px; color: var(--ink-soft); font-weight: 500; }
+.topbar-spacer { flex:1; }
+.topbar-badge {
+  font-family: var(--mono);
+  font-size: 11px; font-weight: 600;
+  padding: 4px 11px; border-radius: 20px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-soft);
+  background: var(--surface);
+  white-space: nowrap;
+  transition: all .2s;
+}
+.topbar-badge.ready { color: var(--green); border-color: var(--green-line); background: var(--green-dim); }
+
+/* ─── LAYOUT ─────────────────────────────────────────── */
+.app-shell { display:flex; min-height:calc(100vh - 58px); }
+
+.sidebar-nav {
+  width: 224px; flex-shrink:0;
+  border-right: 1px solid var(--line);
+  padding: 20px 0;
+  position: sticky; top:58px;
+  height: calc(100vh - 58px);
+  overflow-y: auto;
+  background: var(--surface);
+}
+.sidebar-nav::-webkit-scrollbar { width:4px; }
+.sidebar-nav::-webkit-scrollbar-track { background:transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background:var(--line-strong); border-radius:4px; }
+
+.nav-section-label {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-faint);
+  padding: 8px 20px 6px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 20px;
+  color: var(--ink-soft);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+}
+.nav-item:hover { color: var(--ink); background: var(--sunken); }
+.nav-item.active { color: var(--brand); border-left-color: var(--brand); background: var(--brand-soft); }
+.nav-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ink-faint); flex-shrink:0;
+  transition: background .15s;
+}
+.nav-item.active .nav-dot, .nav-item:hover .nav-dot { background: var(--brand); }
+.nav-item.nav-ok .nav-dot { background: var(--green); }
+.nav-item.nav-ok:hover .nav-dot { background: var(--green); }
+.nav-item.nav-ok.active { color: var(--green); border-left-color: var(--green); background: var(--green-dim); }
+.nav-count {
+  margin-left:auto;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 1px 7px; border-radius: 10px;
+  background: var(--red-dim); color: var(--red);
+}
+.nav-item.nav-ok .nav-count { background: var(--green-dim); color: var(--green); }
+
+.main-content { flex:1; min-width:0; padding: 28px 32px 60px; }
+
+/* ─── UPLOAD SECTION ─────────────────────────────────── */
+.section-header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+.section-title { font-family: var(--display); font-size: 17px; font-weight: 700; letter-spacing:-.01em; }
+.section-sub { font-size: 12px; color: var(--ink-soft); }
+
+.upload-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+@media(max-width:1100px){ .upload-grid { grid-template-columns: repeat(3,1fr); } }
+@media(max-width:700px){ .upload-grid { grid-template-columns: 1fr 1fr; } }
+
+.upload-card {
+  position: relative;
+  background: var(--surface);
+  border: 1.5px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  padding: 16px 14px 14px;
+  cursor: pointer;
+  transition: border-color .2s, background .2s, transform .15s, box-shadow .2s;
+  text-align: center;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.upload-card::before {
+  content: '';
+  position: absolute; top:0; left:0; right:0; height:2px;
+  background: var(--line);
+  transition: background .2s;
+}
+.upload-card:hover { border-color: var(--brand); background: var(--brand-soft); transform: translateY(-1px); box-shadow: var(--shadow-pop); }
+.upload-card:hover::before { background: var(--brand); }
+.upload-card.loaded { border-style: solid; border-color: var(--green-line); background: var(--green-dim); }
+.upload-card.loaded::before { background: var(--green); }
+.upload-card input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+
+.uc-num { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--ink-faint); margin-bottom: 10px; }
+.uc-icon { font-size: 24px; margin-bottom: 8px; display:block; }
+.uc-label { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom:3px; }
+.uc-hint { font-size: 11px; color: var(--ink-soft); line-height:1.4; }
+.uc-status { margin-top: 10px; font-size: 11px; font-weight: 700; font-family: var(--mono); color: var(--ink-faint); }
+.upload-card.loaded .uc-status { color: var(--green); }
+
+.badge-req {
+  display:inline-block; font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.05em;
+  padding: 1px 6px; border-radius:4px;
+  background: var(--red-dim); color: var(--red);
+  margin-left: 4px; vertical-align:middle;
+}
+.badge-opt {
+  display:inline-block; font-size:9px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.05em;
+  padding: 1px 6px; border-radius:4px;
+  background: var(--sunken); color: var(--ink-faint);
+  margin-left: 4px; vertical-align:middle;
+}
+
+/* ─── RUN BUTTON ─────────────────────────────────────── */
+.run-zone { margin-bottom: 24px; }
+.run-btn {
+  width:100%; background: var(--brand);
+  color: white; border:none; border-radius: var(--r-md);
+  padding: 14px 20px;
+  font-family: var(--sans); font-size:14px; font-weight:700;
+  cursor:pointer; letter-spacing:-.01em;
+  transition: background .15s, transform .1s, box-shadow .15s;
+  display: flex; align-items:center; justify-content:center; gap: 8px;
+  box-shadow: 0 2px 10px rgba(36,84,232,0.25);
+}
+.run-btn:hover:not(:disabled) { background: var(--brand-dark); box-shadow: 0 4px 16px rgba(36,84,232,0.35); transform: translateY(-1px); }
+.run-btn:active:not(:disabled) { transform: translateY(0); }
+.run-btn:disabled { background: var(--sunken); color: var(--ink-faint); cursor:not-allowed; border: 1px solid var(--line); box-shadow:none; }
+.run-hint { text-align:center; font-size:12px; color: var(--ink-soft); margin-top:9px; }
+.run-hint b { color: var(--red); }
+
+/* ─── LOG BOX ────────────────────────────────────────── */
+.log-box {
+  background: var(--ink); color: #C7D2E8;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 12px 16px;
+  font-family: var(--mono); font-size: 12px;
+  max-height: 150px; overflow-y: auto;
+  margin-bottom: 24px; display: none;
+}
+.log-box.visible { display:block; }
+.log-box::-webkit-scrollbar { width:4px; }
+.log-box::-webkit-scrollbar-thumb { background:#33415F; border-radius:4px; }
+.log-line { margin-bottom:2px; color: #9FB0CE; }
+.log-line.ok { color: #4ADE9C; }
+.log-line.err { color: #FF8585; }
+
+/* ─── SUMMARY SCORECARD ──────────────────────────────── */
+.scorecard { display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 28px; }
+@media(max-width:1000px){ .scorecard { grid-template-columns: repeat(3,1fr); } }
+@media(max-width:600px){  .scorecard { grid-template-columns: 1fr 1fr; } }
+
+.score-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 17px 18px;
+  position: relative; overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.score-card::after { content:''; position:absolute; bottom:0; left:0; right:0; height:3px; background: var(--line); }
+.score-card.total { background: var(--ink); }
+.score-card.total .score-label, .score-card.total .score-sub { color: rgba(255,255,255,0.65); }
+.score-card.total .score-n { color: #fff; }
+.score-card.err::after  { background: var(--red); }
+.score-card.ok::after   { background: var(--green); }
+.score-card.warn::after { background: var(--amber); }
+
+.score-n { font-family: var(--mono); font-weight:700; font-size: 32px; line-height:1; margin-bottom:5px; color: var(--ink); }
+.score-card.err .score-n  { color: var(--red); }
+.score-card.ok  .score-n  { color: var(--green); }
+.score-card.total .score-n { font-size:38px; }
+.score-label { font-size:12px; color: var(--ink-soft); font-weight:600; }
+.score-sub   { font-size:11px; color: var(--ink-faint); margin-top:3px; }
+
+/* ─── MODULE SECTIONS ────────────────────────────────── */
+.module { margin-bottom: 32px; scroll-margin-top: 76px; }
+.module-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 15px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  border-left: 4px solid var(--red);
+}
+.module-header.amber { border-left-color: var(--amber); }
+.module-header.violet { border-left-color: var(--violet); }
+.module-header.blue { border-left-color: var(--blue); }
+.module-header:hover { background: var(--sunken); }
+.module-icon { font-size: 17px; }
+.module-title { font-family: var(--display); font-size:15px; font-weight:700; flex:1; letter-spacing:-.01em; color: var(--ink); }
+.module-meta { font-size:11px; color:var(--ink-soft); font-family:var(--mono); }
+.module-count { font-family: var(--mono); font-size:12px; font-weight:700; padding: 3px 11px; border-radius:20px; background: var(--red-dim); color: var(--red); }
+.module-header.amber .module-count { background: var(--amber-dim); color: var(--amber); }
+.module-header.violet .module-count { background: var(--violet-dim); color: var(--violet); }
+.module-header.blue .module-count { background: var(--blue-dim); color: var(--blue); }
+.module-chevron { font-size:11px; color:var(--ink-faint); transition: transform .2s; }
+.module.collapsed .module-chevron { transform: rotate(-90deg); }
+.module.collapsed .module-body { display:none; }
+
+.module-body { border: 1px solid var(--line); border-top:none; border-radius: 0 0 var(--r-md) var(--r-md); overflow: hidden; background: var(--surface); }
+
+/* sub-groups inside a module */
+.sub-group { border-bottom: 1px solid var(--line); }
+.sub-group:last-child { border-bottom:none; }
+.sub-header { display:flex; align-items:center; gap:10px; padding: 12px 20px; background: var(--sunken); cursor:pointer; user-select:none; }
+.sub-header:hover { background: #E3E8F4; }
+.sub-title { font-size:13px; font-weight:700; flex:1; color:var(--ink); }
+.sub-count { font-family:var(--mono); font-size:11px; font-weight:700; padding: 1px 8px; border-radius:10px; background:var(--red-dim); color:var(--red); }
+.sub-header.amber .sub-count { background:var(--amber-dim); color:var(--amber); }
+.sub-chevron { font-size:10px; color:var(--ink-faint); transition:transform .2s; }
+.sub-group.collapsed .sub-chevron { transform:rotate(-90deg); }
+.sub-group.collapsed .sub-body { display:none; }
+
+/* ─── DATA TABLE ─────────────────────────────────────── */
+.dt-wrap { overflow-x: auto; }
+.dt { width:100%; border-collapse:collapse; font-size: 12.5px; }
+.dt th {
+  background: var(--sunken); color: var(--ink-soft);
+  font-size: 10.5px; font-weight:700;
+  text-transform:uppercase; letter-spacing:.07em;
+  padding: 10px 16px; text-align:left;
+  border-bottom: 1px solid var(--line);
+  white-space:nowrap;
+  font-family: var(--mono);
+}
+.dt td { padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align:top; color: var(--ink); }
+.dt tr:last-child td { border-bottom:none; }
+.dt tr:hover td { background: var(--paper); }
+.dt td:first-child { font-family:var(--mono); font-size:11px; color:var(--ink-faint); }
+
+/* ─── CHIPS & PILLS ──────────────────────────────────── */
+.chip { display:inline-flex; align-items:center; gap:4px; border-radius: 20px; padding: 2px 9px; font-size: 11px; font-weight: 700; white-space:nowrap; }
+.chip-red    { background:var(--red-dim);    color:var(--red);    border:1px solid var(--red-line); }
+.chip-amber  { background:var(--amber-dim);  color:var(--amber);  border:1px solid var(--amber-line); }
+.chip-green  { background:var(--green-dim);  color:var(--green);  border:1px solid var(--green-line); }
+.chip-blue   { background:var(--blue-dim);   color:var(--blue);   border:1px solid var(--blue-line); }
+.chip-violet { background:var(--violet-dim); color:var(--violet); border:1px solid var(--violet-line); }
+.chip-muted  { background:var(--sunken); color:var(--ink-soft); border:1px solid var(--line); }
+
+.pill { display:inline-block; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; white-space:nowrap; }
+.pill-drug  { background:var(--blue-dim);   color:#0A6F8E;  border:1px solid var(--blue-line); }
+.pill-svc   { background:var(--violet-dim); color:#5B32B8;  border:1px solid var(--violet-line); }
+.pill-cls   { background:var(--amber-dim);  color:var(--amber); border:1px solid var(--amber-line); }
+
+/* ─── TIME / TIMESTAMP TREATMENT ─────────────────────── *
+ * Signature element: timestamps render as bold mono "digital
+ * readout" chips so the moment of each violation is the first
+ * thing the eye lands on when scanning a case.                 */
+.t-pill {
+  display:inline-block;
+  font-family: var(--mono); font-size: 13px; font-weight: 700;
+  color: var(--ink); background: var(--sunken);
+  border: 1px solid var(--line-strong);
+  padding: 3px 10px; border-radius: 6px;
+  white-space: nowrap; letter-spacing: -0.01em;
+}
+.t-inline { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
+
+.time-range { display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:14px; font-weight:600; color:var(--ink-soft); margin-top:4px; }
+.time-range .sep { color:var(--ink-faint); font-weight:400; }
+.time-val { color:var(--ink); font-weight:700; font-size:14.5px; }
+.dur-badge {
+  display:inline-block; font-family:var(--mono); font-size:11px; font-weight:700;
+  padding:2px 8px; border-radius:5px;
+  background:var(--blue-dim); color:var(--blue);
+  margin-left:6px;
+}
+
+/* ─── PHÂN THÂN: MASTER/DETAIL ───────────────────────── */
+.master-detail { display:flex; min-height:360px; border-radius:0 0 var(--r-md) var(--r-md); overflow:hidden; }
+.master-list { width:244px; flex-shrink:0; border-right:1px solid var(--line); background: var(--sunken); overflow-y:auto; }
+.master-list::-webkit-scrollbar { width:4px; }
+.master-list::-webkit-scrollbar-thumb { background:var(--line-strong); border-radius:4px; }
+.master-sticky {
+  position:sticky; top:0; z-index:1;
+  padding:11px 16px;
+  background: var(--surface);
+  border-bottom:1px solid var(--line);
+  font-size:10px; font-weight:700; text-transform:uppercase;
+  letter-spacing:.07em; color:var(--ink-faint);
+  font-family:var(--mono);
+  display:flex; align-items:center; gap:8px;
+}
+.master-item { padding:12px 16px; border-bottom:1px solid var(--line); cursor:pointer; transition:background .12s; border-left:3px solid transparent; }
+.master-item:hover { background:var(--surface); }
+.master-item.active { background: var(--surface); border-left-color: var(--brand); box-shadow: inset 0 0 0 1px var(--line); }
+.master-name { font-size:13px; font-weight:700; color:var(--ink); margin-bottom:6px; }
+.master-item.active .master-name { color: var(--brand); }
+.master-meta { display:flex; gap:5px; flex-wrap:wrap; }
+
+.detail-panel { flex:1; padding:20px 24px; overflow-y:auto; max-height:520px; background: var(--surface); }
+.detail-panel::-webkit-scrollbar { width:4px; }
+.detail-panel::-webkit-scrollbar-thumb { background:var(--line-strong); border-radius:4px; }
+.detail-bs-header { display:flex; align-items:center; gap:12px; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+.detail-bs-name { font-family: var(--display); font-size:16px; font-weight:700; flex:1; color: var(--ink); }
+
+.incident-card { border:1px solid var(--line); border-left:4px solid var(--red); border-radius:var(--r-sm); margin-bottom:12px; overflow:hidden; box-shadow: var(--shadow-card); }
+.incident-card.cls-type { border-left-color:var(--amber); }
+.incident-card.mixed-type { border-left-color:var(--violet); }
+.incident-head {
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:11px 14px;
+  background: var(--sunken);
+  border-bottom:1px solid var(--line);
+}
+.incident-card.cls-type .incident-head { background: var(--amber-dim); }
+.incident-card.mixed-type .incident-head { background: var(--violet-dim); }
+.incident-num { font-family:var(--mono); font-size:10.5px; font-weight:700; color:var(--red); text-transform:uppercase; letter-spacing:.05em; }
+.incident-card.cls-type .incident-num { color:var(--amber); }
+.incident-card.mixed-type .incident-num { color:var(--violet); }
+.incident-time {
+  font-family: var(--mono); font-size: 19px; font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  padding: 5px 14px;
+  border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.incident-body { padding:13px 14px; background: var(--surface); }
+
+.bn-row { padding:9px 0; border-bottom:1px solid var(--line); }
+.bn-row:last-child { border-bottom:none; }
+.bn-name { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; font-weight:700; color: var(--ink); }
+.bn-code { font-family:var(--mono); font-size:11px; color:var(--ink-faint); font-weight:500; }
+.bn-pills { display:flex; flex-wrap:wrap; gap:5px; }
+
+/* ─── SECTION DIVIDER ────────────────────────────────── */
+.divider { display:flex; align-items:center; gap:12px; margin:28px 0 16px; }
+.divider-line { flex:1; height:1px; background:var(--line); }
+.divider-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); white-space:nowrap; }
+
+/* ─── EMPTY STATE ────────────────────────────────────── */
+.empty-state { text-align:center; padding:64px 20px; color:var(--ink-soft); }
+.empty-ico { font-size:44px; margin-bottom:12px; }
+.empty-msg { font-size:14px; font-weight: 600; }
+
+@media(max-width:700px){
+  .main-content { padding:16px; }
+  .sidebar-nav { display:none; }
+  .master-detail { flex-direction:column; }
+  .master-list { width:100%; border-right:none; border-bottom:1px solid var(--line); }
+  .detail-panel { max-height:none; }
+  .incident-time { font-size: 16px; }
+  .hero { padding: 24px 16px; }
+  .hero h1 { font-size: 22px; }
+  .hero-stats { grid-template-columns: repeat(2, 1fr); }
+  .score-card { font-size: 12px; }
+  .score-n { font-size: 20px; }
+}
+
+/* ─── HERO SECTION ─────────────────────────────────────── */
+.hero {
+  background: linear-gradient(135deg, var(--brand-soft) 0%, rgba(232,237,252,0.4) 100%);
+  padding: 48px 28px;
+  border-bottom: 1px solid var(--line);
+  animation: fadeInUp 0.6s ease-out;
+}
+.hero-content {
+  max-width: 960px;
+  margin: 0 auto;
+}
+.hero h1 {
+  font-family: var(--display);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
+}
+.hero > p {
+  font-size: 16px;
+  color: var(--ink-soft);
+  margin-bottom: 28px;
+}
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.stat {
+  background: var(--surface);
+  padding: 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+  transition: var(--transition);
+}
+.stat:hover {
+  border-color: var(--brand);
+  box-shadow: 0 4px 12px rgba(36,84,232,0.15);
+  transform: translateY(-2px);
+}
+.stat-value {
+  font-family: var(--display);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--brand);
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+/* ─── NAV IMPROVEMENTS ─────────────────────────────────── */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 100%;
+  background: transparent;
+  transition: var(--transition);
+}
+.nav-item:hover {
+  background: var(--brand-soft);
+  transform: translateX(4px);
+}
+.nav-item.nav-err {
+  border: 1px solid var(--red-line);
+  background: var(--red-dim);
+}
+.nav-item.nav-err:hover {
+  background: rgba(220,38,38,0.1);
+}
+.nav-item.nav-ok {
+  border: 1px solid transparent;
+}
+.nav-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: var(--transition);
+  flex-shrink: 0;
+}
+.nav-item.nav-err .nav-dot {
+  background: var(--red);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+.nav-item.nav-ok .nav-dot {
+  background: var(--green);
+}
+
+/* ─── SCORE CARD UPGRADES ──────────────────────────────── */
+.score-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 18px;
+  text-align: center;
+  box-shadow: var(--shadow-card);
+  transition: var(--transition);
+  animation: fadeInUp 0.5s ease-out;
+}
+.score-card.err {
+  border-color: var(--red-line);
+  background: var(--red-dim);
+}
+.score-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-pop);
+  border-color: var(--brand);
+}
+.score-card.err:hover {
+  border-color: var(--red);
+}
+.score-n {
+  font-family: var(--display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+  animation: countUp 0.6s ease-out;
+}
+.score-card.err .score-n {
+  color: var(--red);
+}
+.score-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.score-sub {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+
+/* ─── MODULE CARD UPGRADES ─────────────────────────────── */
+.module-card {
+  animation: fadeInUp 0.5s ease-out;
+  transition: var(--transition);
+}
+.module-card:hover {
+  box-shadow: var(--shadow-pop);
+}
+.module-head {
+  position: relative;
+  overflow: hidden;
+}
+.module-head::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  opacity: 0.3;
+}
+
+/* ─── TABLE IMPROVEMENTS ───────────────────────────────── */
+.dt tbody tr {
+  transition: var(--transition);
+}
+.dt tbody tr:nth-child(even) {
+  background: rgba(15,23,41,0.02);
+}
+.dt tbody tr:hover {
+  background: var(--brand-soft);
+}
+.dt thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
+}
+.dt th {
+  transition: var(--transition);
+}
+
+/* ─── BUTTON & INTERACTIVE UPGRADES ────────────────────── */
+button {
+  transition: var(--transition);
+  position: relative;
+  overflow: hidden;
+}
+button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-pop);
+}
+button:active:not(:disabled) {
+  transform: translateY(0);
+}
+button::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.5);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+button:active::before {
+  width: 300px;
+  height: 300px;
+}
+
+/* ─── LOADING & EMPTY STATE ────────────────────────────── */
+.loading {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite;
+}
+
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <a class="topbar-brand" href="#">
+    <div class="brand-mark">
+      <svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16A8 8 0 0010 2zm-.5 4.5a.5.5 0 011 0v4.793l2.854 2.853a.5.5 0 01-.708.708l-3-3A.5.5 0 019.5 11.5V6.5z"/></svg>
+    </div>
+    <span class="brand-name">MedAudit</span>
+    <span class="brand-sep">·</span>
+    <span class="brand-sub">Kiểm tra Hồ sơ BHYT — CV130</span>
+  </a>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-badge" id="topBadge">0 / 5 tệp đã tải</div>
+</header>
+
+<!-- HERO SECTION -->
+<section class="hero">
+  <div class="hero-content">
+    <h1>MedAudit — Kiểm Tra Hồ Sơ BHYT</h1>
+    <p>Dò tìm lỗi theo 6 module kiểm tra toàn diện, offline 100%, không lưu dữ liệu</p>
+    <div class="hero-stats">
+      <div class="stat">
+        <div class="stat-value">6</div>
+        <div class="stat-label">Module Dò Lỗi</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">100%</div>
+        <div class="stat-label">Offline</div>
+      </div>
+      <div class="stat">
+        <div class="stat-value">0</div>
+        <div class="stat-label">Vấn Đề Phát Hiện</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="app-shell">
+
+  <!-- SIDEBAR NAV -->
+  <nav class="sidebar-nav" id="sideNav">
+    <div class="nav-section-label">Tải dữ liệu</div>
+    <a class="nav-item active" href="#upload-section" onclick="scrollTo('upload-section')">
+      <span class="nav-dot"></span>Nhập liệu
+    </a>
+
+    <div class="nav-section-label" style="margin-top:12px">Kết quả phân tích</div>
+    <a class="nav-item nav-ok" id="nav-m1" href="#mod-phanthan" onclick="scrollTo('mod-phanthan')">
+      <span class="nav-dot"></span>Xung đột giờ bác sĩ
+      <span class="nav-count" id="ncount1" style="display:none">0</span>
+    </a>
+    <a class="nav-item nav-ok" id="nav-m2" href="#mod-yeLenh" onclick="scrollTo('mod-yeLenh')">
+      <span class="nav-dot"></span>Y lệnh thuốc bất hợp lệ
+      <span class="nav-count" id="ncount2" style="display:none">0</span>
+    </a>
+    <a class="nav-item nav-ok" id="nav-m3" href="#mod-noisoi" onclick="scrollTo('mod-noisoi')">
+      <span class="nav-dot"></span>Nội soi Tai Mũi Họng
+      <span class="nav-count" id="ncount3" style="display:none">0</span>
+    </a>
+    <a class="nav-item nav-ok" id="nav-m4" href="#mod-xquang" onclick="scrollTo('mod-xquang')">
+      <span class="nav-dot"></span>Chẩn đoán hình ảnh XQ
+      <span class="nav-count" id="ncount4" style="display:none">0</span>
+    </a>
+    <a class="nav-item nav-ok" id="nav-m5" href="#mod-sieuxq" onclick="scrollTo('mod-sieuxq')">
+      <span class="nav-dot"></span>Chồng giờ Siêu âm – XQ
+      <span class="nav-count" id="ncount5" style="display:none">0</span>
+    </a>
+    <a class="nav-item nav-ok" id="nav-m6" href="#mod-dietim" onclick="scrollTo('mod-dietim')">
+      <span class="nav-dot"></span>Điện tim – Nội soi thực quản
+      <span class="nav-count" id="ncount6" style="display:none">0</span>
+    </a>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="main-content">
+
+    <!-- UPLOAD -->
+    <div id="upload-section">
+      <div class="section-header">
+        <span class="section-title">Nhập dữ liệu hồ sơ</span>
+        <span class="section-sub">Kéo–thả hoặc bấm để chọn tệp · định dạng .xlsx / .xls</span>
+      </div>
+
+      <div class="upload-grid">
+        <div class="upload-card" id="card1" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,1)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,1)">
+          <div class="uc-num">01</div>
+          <span class="uc-icon">🗂</span>
+          <div class="uc-label">Hồ sơ bệnh nhân <span class="badge-req">BẮT BUỘC</span></div>
+          <div class="uc-hint">XML1 — Thông tin BN, ngày vào / ra viện</div>
+          <div class="uc-status" id="st1">Chưa tải</div>
+        </div>
+        <div class="upload-card" id="card2" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,2)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,2)">
+          <div class="uc-num">02</div>
+          <span class="uc-icon">💊</span>
+          <div class="uc-label">Y lệnh thuốc <span class="badge-req">BẮT BUỘC</span></div>
+          <div class="uc-hint">XML2 — Thuốc, mã bác sĩ, giờ chỉ định</div>
+          <div class="uc-status" id="st2">Chưa tải</div>
+        </div>
+        <div class="upload-card" id="card3" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,3)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,3)">
+          <div class="uc-num">03</div>
+          <span class="uc-icon">🔬</span>
+          <div class="uc-label">Dịch vụ kỹ thuật <span class="badge-req">BẮT BUỘC</span></div>
+          <div class="uc-hint">XML3 — Khám, CLS, nội soi, X-quang</div>
+          <div class="uc-status" id="st3">Chưa tải</div>
+        </div>
+        <div class="upload-card" id="card4" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,4)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,4)">
+          <div class="uc-num">04</div>
+          <span class="uc-icon">📊</span>
+          <div class="uc-label">Kết quả xét nghiệm <span class="badge-opt">KHUYẾN NGHỊ</span></div>
+          <div class="uc-hint">XML4 — KQ CLS, bác sĩ đọc kết quả</div>
+          <div class="uc-status" id="st4">Chưa tải</div>
+        </div>
+        <div class="upload-card" id="card5" ondragover="dov(event)" ondragleave="dlv(event)" ondrop="ddr(event,5)">
+          <input type="file" accept=".xlsx,.xls" onchange="hfc(event,5)">
+          <div class="uc-num">05</div>
+          <span class="uc-icon">🪪</span>
+          <div class="uc-label">Danh sách CCHN <span class="badge-opt">TÙY CHỌN</span></div>
+          <div class="uc-hint">Chứng chỉ hành nghề — đối chiếu tên bác sĩ</div>
+          <div class="uc-status" id="st5">Chưa tải</div>
+        </div>
+      </div>
+
+      <div class="run-zone">
+        <button class="run-btn" id="runBtn" onclick="runAnalysis()" disabled>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3.5 2a.5.5 0 01.25.067l9 5a.5.5 0 010 .866l-9 5A.5.5 0 013 12.5v-9a.5.5 0 01.5-.5z"/></svg>
+          Chạy phân tích hồ sơ
+        </button>
+        <div class="run-hint" id="runHint">Cần tải đủ <b>XML1, XML2, XML3</b> để bắt đầu</div>
+      </div>
+
+      <div class="log-box" id="logBox"></div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="results"></div>
+
+  </main>
+</div>
+
+<script>
+function scrollTo(id){ document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'}); return false; }
+
+// ─── FILE HANDLING ──────────────────────────────────────
+const data = { xml1:null, xml2:null, xml3:null, xml4:null, cchn:null };
+const REQUIRED = ['xml1','xml2','xml3'];
+
+function dov(e){ e.preventDefault(); e.currentTarget.style.borderColor='var(--blue)'; }
+function dlv(e){ e.currentTarget.style.borderColor=''; }
+function ddr(e,i){ e.preventDefault(); e.currentTarget.style.borderColor=''; const f=e.dataTransfer?.files[0]; if(f) processFile(f,i); }
+function hfc(e,i){ const f=e.target.files[0]; if(f) processFile(f,i); }
+
+function processFile(file, idx) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array', cellDates:false});
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:'', raw:true});
+      const key = ['xml1','xml2','xml3','xml4','cchn'][idx-1];
+      data[key] = rows;
+      document.getElementById('card'+idx).classList.add('loaded');
+      document.getElementById('st'+idx).textContent = `✓ ${rows.length.toLocaleString('vi')} dòng`;
+      checkReady();
+    } catch {
+      document.getElementById('st'+idx).textContent = '✗ Lỗi đọc tệp';
+      document.getElementById('st'+idx).style.color = 'var(--red)';
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function checkReady() {
+  const loaded = Object.values(data).filter(Boolean).length;
+  const missing = REQUIRED.filter(k => !data[k]);
+  const ready = missing.length === 0;
+  document.getElementById('runBtn').disabled = !ready;
+  document.getElementById('topBadge').textContent = `${loaded} / 5 tệp đã tải`;
+  document.getElementById('topBadge').classList.toggle('ready', ready);
+  document.getElementById('runHint').innerHTML = ready
+    ? 'Đã đủ dữ liệu bắt buộc — sẵn sàng phân tích ✓'
+    : `Cần tải đủ <b>${missing.map(k=>k.toUpperCase()).join(', ')}</b> để bắt đầu`;
+}
+
+// ─── DATE UTILS ─────────────────────────────────────────
+function parseDate(v) {
+  if (!v && v!==0) return null;
+  const s = String(Math.round(Number(v))).trim();
+  if (s.length===12) return new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8),+s.slice(8,10),+s.slice(10,12));
+  if (s.length===8)  return new Date(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8));
+  return null;
+}
+function tgKey(v) { if (!v&&v!==0) return ''; return String(Math.round(Number(v))).slice(0,12); }
+function fmtDate(v) {
+  const d = v instanceof Date ? v : parseDate(v);
+  if (!d||isNaN(d)) return String(v||'—');
+  return d.toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit',year:'numeric'});
+}
+function minutesDiff(a,b){ return Math.round((b-a)/60000); }
+function overlapLabel(min){ return min>0 ? `Chồng ${min} phút` : 'Sát giờ (0 phút nghỉ)'; }
+
+// ─── LOG ─────────────────────────────────────────────────
+function log(msg, type='') {
+  const box = document.getElementById('logBox');
+  box.classList.add('visible');
+  const ln = document.createElement('div');
+  ln.className = 'log-line '+(type||'');
+  ln.textContent = `[${new Date().toLocaleTimeString('vi')}] ${msg}`;
+  box.appendChild(ln); box.scrollTop=box.scrollHeight;
+}
+
+// ─── ANALYSIS ────────────────────────────────────────────
+function runAnalysis() {
+  document.getElementById('logBox').innerHTML='';
+  log(`XML1:${data.xml1?.length||0}  XML2:${data.xml2?.length||0}  XML3:${data.xml3?.length||0}  XML4:${data.xml4?.length||0}`);
+
+  const hoSoMap={};
+  for(const r of data.xml1) hoSoMap[r.MA_LK]=r;
+
+  const cchnMap={};
+  if(data.cchn) for(const r of data.cchn){
+    const ma=String(r['MA CCHN']||r['MA_CCHN']||'').trim();
+    const ten=String(r['TEN BS']||r['TEN_BS']||'').trim();
+    if(ma) cchnMap[ma]=ten;
+  }
+  function docFull(maBS){ const m=String(maBS||'').trim(); const t=cchnMap[m]; return t?`${t} (${m})`:m; }
+  function docName(maBS){ const m=String(maBS||'').trim(); return cchnMap[m]||m; }
+
+  const errors={ phanthan:[], gioyLenhSauRaVien:[], khamTrungThuoc:[], xungdotNoiSoi:[], xungdotXQ:[], sieuAmXQ:[], dienTim_noiSoi:[] };
+
+  // Y lệnh tổng hợp (XML2+XML3)
+  const yLenh=[];
+  for(const r of data.xml2){
+    const maBS=String(r.MA_BAC_SI||'').trim(); const tgRaw=r.NGAY_YL||r.NGAY_TH_YL||'';
+    if(!maBS||maBS==='0'||!tgRaw) continue;
+    const tg=tgKey(tgRaw); if(!tg) continue;
+    yLenh.push({maBS,tg,tgDate:parseDate(tgRaw),MA_LK:r.MA_LK,loai:'Thuốc',ten:r.TEN_THUOC||''});
+  }
+  for(const r of data.xml3){
+    const maBS=String(r.MA_BAC_SI||'').trim(); const tgRaw=r.NGAY_YL||r.NGAY_TH_YL||'';
+    if(!maBS||maBS==='0'||!tgRaw) continue;
+    const tg=tgKey(tgRaw); if(!tg) continue;
+    yLenh.push({maBS,tg,tgDate:parseDate(tgRaw),MA_LK:r.MA_LK,loai:'DVKT',ten:r.TEN_DICH_VU||''});
+  }
+  // CLS events (XML4)
+  const clsIndex={};
+  if(data.xml4) for(const r of data.xml4){
+    const maBS=String(r.MA_BS_DOC_KQ||r.MA_BAC_SI||'').trim(); const tgRaw=r.NGAY_KQ||'';
+    if(!maBS||maBS==='0'||!tgRaw) continue;
+    const tg=tgKey(tgRaw); if(!tg) continue;
+    const k=maBS+'||'+tg; if(!clsIndex[k]) clsIndex[k]=[];
+    clsIndex[k].push({maBS,tg,MA_LK:r.MA_LK});
+  }
+
+  // M1: XUNG ĐỘT GIỜ BÁC SĨ — gộp "phân thân y lệnh" và "đọc CLS đồng thời y lệnh"
+  // thành MỘT sự cố duy nhất cho mỗi (bác sĩ + phút), tránh tách 2 card cùng lúc.
+  log('Kiểm tra xung đột giờ bác sĩ...');
+  const ylGrp={};
+  for(const yl of yLenh){
+    if(!yl.maBS||yl.maBS==='0') continue;
+    const k=yl.maBS+'||'+yl.tg; if(!ylGrp[k]) ylGrp[k]={maBS:yl.maBS,tg:yl.tg,items:[]};
+    ylGrp[k].items.push(yl);
+  }
+  const m1Keys=new Set([...Object.keys(ylGrp),...Object.keys(clsIndex)]);
+  for(const k of m1Keys){
+    const ylG=ylGrp[k];                 // y lệnh (thuốc/DVKT) tại key này, nếu có
+    const clsG=clsIndex[k]||[];          // ca đọc CLS tại key này, nếu có
+    const ylMalks=ylG?[...new Set(ylG.items.map(x=>x.MA_LK))]:[];
+
+    const isPhanThan=ylMalks.length>=2;          // y lệnh cho ≥2 hồ sơ cùng phút
+    const isClsConcurrent=clsG.length>0 && !!ylG; // vừa đọc CLS vừa có y lệnh cùng phút
+    if(!isPhanThan && !isClsConcurrent) continue; // không vi phạm gì -> bỏ qua
+
+    const [maBS,tg]=k.split('||');
+    const clsBNSet=new Set(clsG.map(c=>c.MA_LK));
+    const ylBNSet=new Set(ylMalks);
+    const allBNs=new Set([...clsBNSet,...ylBNSet]);
+
+    const benhNhanList=[...allBNs].map(malk=>{
+      const hs=hoSoMap[malk];
+      return{malk,tenBN:hs?.HO_TEN||'?',maBN:hs?.MA_BN||'?',
+        hasCLS:clsBNSet.has(malk),
+        yLenh:ylG?ylG.items.filter(x=>x.MA_LK===malk):[]};
+    });
+
+    errors.phanthan.push({
+      maBS,tenBS:docFull(maBS),thoiGian:tg,
+      isPhanThan,isClsConcurrent,
+      benhNhanList,soLuong:allBNs.size
+    });
+  }
+  log(`→ Xung đột lịch: ${errors.phanthan.length} ca`, errors.phanthan.length>0?'err':'ok');
+
+  // M2: Y LỆNH THUỐC BẤT HỢP LỆ
+  log('Kiểm tra y lệnh thuốc...');
+  // XML4 không có TEN_DICH_VU, chỉ có MA_DICH_VU -> phải tra tên CLS qua XML3 (MA_LK + MA_DICH_VU)
+  const dvNameMap={};
+  if(data.xml3) for(const r of data.xml3){
+    if(!r.MA_LK||!r.MA_DICH_VU) continue;
+    dvNameMap[r.MA_LK+'||'+r.MA_DICH_VU]=r.TEN_DICH_VU||'';
+  }
+  const clsByBN={};
+  if(data.xml4) for(const r of data.xml4){
+    const tg=tgKey(r.NGAY_KQ); if(!tg||!r.MA_LK) continue;
+    if(!clsByBN[r.MA_LK]) clsByBN[r.MA_LK]={};
+    if(!clsByBN[r.MA_LK][tg]) clsByBN[r.MA_LK][tg]=new Set();
+    const dvName=dvNameMap[r.MA_LK+'||'+r.MA_DICH_VU]||(r.MA_DICH_VU?`Dịch vụ ${r.MA_DICH_VU}`:'');
+    if(dvName) clsByBN[r.MA_LK][tg].add(dvName);
+  }
+  const gioyLenhMap={};
+  for(const r of data.xml2){
+    const hs=hoSoMap[r.MA_LK]; if(!hs) continue;
+    const ngayRA=parseDate(hs.NGAY_RA); const ngayYL=parseDate(r.NGAY_YL||r.NGAY_TH_YL);
+    if(!ngayYL) continue;
+    const tg12=tgKey(r.NGAY_YL||r.NGAY_TH_YL);
+    const isAfterRA=ngayRA&&ngayYL>ngayRA;
+    const clsSet=clsByBN[r.MA_LK]&&clsByBN[r.MA_LK][tg12];
+    const isTrungCLS=!!(data.xml4&&clsSet&&clsSet.size);
+    if(!isAfterRA&&!isTrungCLS) continue;
+    if(!gioyLenhMap[r.MA_LK]) gioyLenhMap[r.MA_LK]={MA_LK:r.MA_LK,tenBN:hs.HO_TEN||'?',maBN:hs.MA_BN||'?',maBS:r.MA_BAC_SI,tenBS:docFull(r.MA_BAC_SI),ngayRA:hs.NGAY_RA,thuocLoi:[]};
+    const chenh=ngayRA?minutesDiff(ngayRA,ngayYL):null;
+    const clsName=isTrungCLS?[...clsSet].join(', '):null;
+    gioyLenhMap[r.MA_LK].thuocLoi.push({thuoc:r.TEN_THUOC||'?',ngayYL:r.NGAY_YL||r.NGAY_TH_YL,isAfterRA,isTrungCLS,clsName,chenhLech:chenh!==null?chenh+' phút':null});
+  }
+  errors.gioyLenhSauRaVien=Object.values(gioyLenhMap);
+  log(`→ Y lệnh thuốc bất hợp lệ: ${errors.gioyLenhSauRaVien.length} BN`, errors.gioyLenhSauRaVien.length>0?'err':'ok');
+
+  // M2b: Y LỆNH KHÁM TRÙNG PHÚT VỚI Y LỆNH THUỐC CÙNG BỆNH NHÂN
+  // Quy tắc: NGAY_YL của y lệnh khám (XML3, loại khám bệnh) và NGAY_YL của thuốc (XML2)
+  // cùng MA_LK phải cách nhau ít nhất 1 phút. Nếu bằng nhau (diff = 0) → lỗi.
+  log('Kiểm tra y lệnh khám trùng phút y lệnh thuốc...');
+
+  // Từ khóa nhận diện dịch vụ KHÁM (XML3)
+  const KHAM_KW=['khám bệnh','khám nội','khám ngoại','khám sản','khám nhi','khám da','khám mắt',
+    'khám tai','khám răng','khám thần kinh','khám tim mạch','khám hô hấp','khám tiêu hóa',
+    'khám cơ xương','khám ung bướu','khám tổng quát','khám lại','tư vấn','khám'];
+  const isKham=t=>{ if(!t) return false; const s=t.toLowerCase();
+    // Không phải nội soi hay XQ mới tính là khám
+    if(s.includes('nội soi')||s.includes('x-quang')||s.includes('xquang')||s.includes('xét nghiệm')) return false;
+    return KHAM_KW.some(kw=>s.startsWith(kw)||s.includes(kw)); };
+
+  // Build index y lệnh thuốc theo MA_LK → Set<tgKey 12 chữ số>
+  const thuocByBN={};
+  for(const r of data.xml2){
+    const tg=tgKey(r.NGAY_YL||r.NGAY_TH_YL||'');
+    if(!tg||!r.MA_LK) continue;
+    if(!thuocByBN[r.MA_LK]) thuocByBN[r.MA_LK]=[];
+    thuocByBN[r.MA_LK].push({tg,tgDate:parseDate(r.NGAY_YL||r.NGAY_TH_YL),ten:r.TEN_THUOC||'?',maBS:r.MA_BAC_SI});
+  }
+
+  // Build index y lệnh khám theo MA_LK → list
+  const khamByBN={};
+  for(const r of data.xml3){
+    if(!isKham(r.TEN_DICH_VU)) continue;
+    const tg=tgKey(r.NGAY_YL||r.NGAY_TH_YL||'');
+    if(!tg||!r.MA_LK) continue;
+    if(!khamByBN[r.MA_LK]) khamByBN[r.MA_LK]=[];
+    khamByBN[r.MA_LK].push({tg,tgDate:parseDate(r.NGAY_YL||r.NGAY_TH_YL),ten:r.TEN_DICH_VU||'?',maBS:r.MA_BAC_SI});
+  }
+
+  // So sánh: với mỗi BN có cả khám lẫn thuốc, tìm các cặp (khám, thuốc) có diff < 1 phút
+  const khamTrungMap={};
+  for(const malk of Object.keys(khamByBN)){
+    const thuocList=thuocByBN[malk]||[];
+    if(!thuocList.length) continue;
+    const hs=hoSoMap[malk];
+    for(const kham of khamByBN[malk]){
+      for(const thuoc of thuocList){
+        const diff=Math.abs(minutesDiff(kham.tgDate, thuoc.tgDate));
+        if(diff < 1){ // cùng phút → lỗi
+          if(!khamTrungMap[malk]) khamTrungMap[malk]={
+            MA_LK:malk, tenBN:hs?.HO_TEN||'?', maBN:hs?.MA_BN||'?',
+            tenBS:docFull(kham.maBS), conflicts:[]
+          };
+          // Tránh trùng cặp
+          const pairKey=kham.tg+'|'+thuoc.tg+'|'+kham.ten+'|'+thuoc.ten;
+          if(!khamTrungMap[malk]._seen) khamTrungMap[malk]._seen=new Set();
+          if(!khamTrungMap[malk]._seen.has(pairKey)){
+            khamTrungMap[malk]._seen.add(pairKey);
+            khamTrungMap[malk].conflicts.push({
+              kham:{ten:kham.ten, tg:kham.tg, maBS:kham.maBS},
+              thuoc:{ten:thuoc.ten, tg:thuoc.tg, maBS:thuoc.maBS},
+            });
+          }
+        }
+      }
+    }
+  }
+  errors.khamTrungThuoc=Object.values(khamTrungMap);
+  log(`→ Y lệnh khám trùng phút với thuốc: ${errors.khamTrungThuoc.length} BN`, errors.khamTrungThuoc.length>0?'err':'ok');
+  log('Kiểm tra nội soi Tai Mũi Họng...');
+  const TMH_KW=['tai mũi họng','nội soi tmh','nội soi tai','nội soi mũi','nội soi họng','nội soi thanh quản','nội soi xoang','nội soi ống tai','nội soi vòm'];
+  const isTMH=t=>t&&TMH_KW.some(kw=>t.toLowerCase().includes(kw));
+  const ylByBS={};
+  for(const yl of yLenh){ if(!ylByBS[yl.maBS]) ylByBS[yl.maBS]=[]; ylByBS[yl.maBS].push({tgDate:parseDate(yl.tg),MA_LK:yl.MA_LK,loai:yl.loai,ten:yl.ten,tg:yl.tg}); }
+  const tmhSess=[];
+  for(const r of data.xml3){
+    if(!isTMH(r.TEN_DICH_VU)) continue;
+    const maBS=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim(); if(!maBS||maBS==='0') continue;
+    const tS=parseDate(r.NGAY_TH_YL||r.NGAY_YL); const tE=parseDate(r.NGAY_KQ);
+    if(!tS||!tE||tE<=tS) continue;
+    tmhSess.push({maBS,MA_LK:r.MA_LK,maDVKT:r.MA_DICH_VU||'',tenDV:r.TEN_DICH_VU||'Nội soi TMH',tStart:tS,tEnd:tE,tenBS:docFull(maBS),tenBN:hoSoMap[r.MA_LK]?.HO_TEN||'?',maBN:hoSoMap[r.MA_LK]?.MA_BN||'?'});
+  }
+  // Loại A: y lệnh trong giờ
+  for(const sess of tmhSess){
+    const ylTG=(ylByBS[sess.maBS]||[]).filter(yl=>yl.tgDate&&yl.tgDate>=sess.tStart&&yl.tgDate<=sess.tEnd);
+    if(!ylTG.length) continue;
+    const bnMap={};
+    for(const yl of ylTG){ if(!bnMap[yl.MA_LK]){const hs=hoSoMap[yl.MA_LK];bnMap[yl.MA_LK]={MA_LK:yl.MA_LK,tenBN:hs?.HO_TEN||'?',maBN:hs?.MA_BN||'?',isSameBN:yl.MA_LK===sess.MA_LK,yLenh:[]};} bnMap[yl.MA_LK].yLenh.push(yl); }
+    errors.xungdotNoiSoi.push({loaiLoi:'A',sess,conflictBNs:Object.values(bnMap)});
+  }
+  // Loại C: Y lệnh KHÁM TMH phải cách ≥ 1 phút với BẤT KỲ y lệnh nào khác trên cùng BN
+  // Quy tắc: Nếu XML3 có dịch vụ là "Khám TMH" (phân biệt với nội soi TMH), thì
+  // tại phút đó không được có y lệnh nào khác (thuốc, DVKT) trên cùng MA_LK.
+  // Nhận diện "Khám TMH": tên chứa "tai mũi họng" hoặc "tmh" NHƯNG không phải nội soi
+  const isKhamTMH=t=>{ if(!t) return false; const s=t.toLowerCase();
+    const hasTMH=s.includes('tai mũi họng')||s.includes('tmh')||s.includes('tai-mũi-họng');
+    const isNoiSoi=s.includes('nội soi')||s.includes('noi soi');
+    const isCLS=s.includes('xét nghiệm')||s.includes('x-quang')||s.includes('xquang')||s.includes('siêu âm');
+    // Là khám TMH nếu có từ khóa TMH, không phải nội soi, không phải CLS
+    return hasTMH&&!isNoiSoi&&!isCLS; };
+
+  // Index tất cả y lệnh (thuốc XML2 + DVKT XML3) theo MA_LK → list{tgDate, ten, loai, nguon}
+  const allYLenhByBN={};
+  for(const r of data.xml2){
+    const tgRaw=r.NGAY_YL||r.NGAY_TH_YL||''; const tgDate=parseDate(tgRaw);
+    if(!tgDate||!r.MA_LK) continue;
+    if(!allYLenhByBN[r.MA_LK]) allYLenhByBN[r.MA_LK]=[];
+    allYLenhByBN[r.MA_LK].push({tgDate,ten:r.TEN_THUOC||'?',loai:'Thuốc',tgRaw,maBS:r.MA_BAC_SI});
+  }
+  for(const r of data.xml3){
+    const tgRaw=r.NGAY_YL||r.NGAY_TH_YL||''; const tgDate=parseDate(tgRaw);
+    if(!tgDate||!r.MA_LK) continue;
+    if(!allYLenhByBN[r.MA_LK]) allYLenhByBN[r.MA_LK]=[];
+    allYLenhByBN[r.MA_LK].push({tgDate,ten:r.TEN_DICH_VU||'?',loai:'DVKT',tgRaw,maBS:r.MA_BAC_SI||r.NGUOI_THUC_HIEN||''});
+  }
+
+  // Thu thập y lệnh KHÁM TMH từ XML3
+  const khamTMHViolations={};
+  for(const r of data.xml3){
+    if(!isKhamTMH(r.TEN_DICH_VU)) continue;
+    const tgRaw=r.NGAY_YL||r.NGAY_TH_YL||''; const tgKham=parseDate(tgRaw);
+    if(!tgKham||!r.MA_LK) continue;
+    const maBS=String(r.MA_BAC_SI||r.NGUOI_THUC_HIEN||'').trim();
+    const hs=hoSoMap[r.MA_LK];
+    const otherYL=(allYLenhByBN[r.MA_LK]||[]).filter(yl=>{
+      // Loại bỏ chính y lệnh khám TMH này (cùng tên, cùng giờ)
+      if(yl.ten===r.TEN_DICH_VU&&Math.abs(minutesDiff(yl.tgDate,tgKham))===0&&yl.loai==='DVKT') return false;
+      // Kiểm tra cách < 1 phút
+      return Math.abs(minutesDiff(yl.tgDate,tgKham))<1;
+    });
+    if(!otherYL.length) continue;
+    const key=r.MA_LK+'||'+tgRaw;
+    if(!khamTMHViolations[key]) khamTMHViolations[key]={
+      MA_LK:r.MA_LK, tenBN:hs?.HO_TEN||'?', maBN:hs?.MA_BN||'?',
+      maBS, tenBS:docFull(maBS),
+      tenDV:r.TEN_DICH_VU||'Khám TMH',
+      tgKham, tgKhamRaw:tgRaw,
+      conflicts:[], _seen:new Set()
+    };
+    for(const yl of otherYL){
+      const pKey=yl.tgRaw+'|'+yl.ten+'|'+yl.loai;
+      if(!khamTMHViolations[key]._seen.has(pKey)){
+        khamTMHViolations[key]._seen.add(pKey);
+        khamTMHViolations[key].conflicts.push(yl);
+      }
+    }
+  }
+  const loaiC=Object.values(khamTMHViolations);
+
+  // Loại B: 2 ca chồng giờ
+  const rpPairs=new Set();
+  for(let i=0;i<tmhSess.length;i++){
+    const a=tmhSess[i]; const ov=[];
+    for(let j=0;j<tmhSess.length;j++){
+      if(i===j) continue; const b=tmhSess[j];
+      if(a.maBS!==b.maBS) continue;
+      // Chỉ coi là "dữ liệu trùng" khi cùng BN, cùng mã dịch vụ, cùng giờ bắt đầu/kết thúc.
+      // Nếu cùng BN nhưng khác dịch vụ hoặc khác giờ => vẫn phải kiểm tra chồng giờ bình thường.
+      const isDupRow=a.MA_LK===b.MA_LK&&a.maDVKT===b.maDVKT&&a.tStart.getTime()===b.tStart.getTime()&&a.tEnd.getTime()===b.tEnd.getTime();
+      if(isDupRow) continue;
+      // Chồng giờ HOẶC sát giờ (ca sau bắt đầu đúng lúc / trước khi ca trước kết thúc) đều là lỗi
+      if(a.tStart<=b.tEnd&&b.tStart<=a.tEnd){ const pk=[a.MA_LK,b.MA_LK].sort().join('|')+'|'+a.maBS+'|'+a.maDVKT+'|'+b.maDVKT; if(!rpPairs.has(pk)){ov.push(b);rpPairs.add(pk);} }
+    }
+    if(ov.length) errors.xungdotNoiSoi.push({loaiLoi:'B',mainSess:a,overlapSessions:ov});
+  }
+  for(const v of loaiC) errors.xungdotNoiSoi.push({loaiLoi:'C',...v});
+  errors.xungdotNoiSoi.sort((a,b)=>{
+    const tA=a.tgKham||a.sess?.tStart||a.mainSess?.tStart||0;
+    const tB=b.tgKham||b.sess?.tStart||b.mainSess?.tStart||0;
+    return (tA instanceof Date?tA:new Date(tA))-(tB instanceof Date?tB:new Date(tB));
+  });
+  log(`→ Nội soi TMH: ${errors.xungdotNoiSoi.filter(e=>e.loaiLoi==='A').length} ca có y lệnh trong giờ, ${errors.xungdotNoiSoi.filter(e=>e.loaiLoi==='B').length} ca chồng giờ, ${loaiC.length} khám TMH < 1 phút với y lệnh khác`, errors.xungdotNoiSoi.length>0?'err':'ok');
+
+  // M4: X-QUANG
+  log('Kiểm tra X-quang...');
+  const tenToMa={};
+  for(const [ma,ten] of Object.entries(cchnMap)) tenToMa[ten.toLowerCase().trim()]=ma;
+  const XQ_PAIRS=[{docKQ:'võ hải triều',thucHien:'trần văn định'},{docKQ:'dương thị kim khuyến',thucHien:'nguyễn đức duy'}];
+  function normN(s){ return String(s||'').toLowerCase().normalize('NFC').replace(/\s+/g,' ').trim(); }
+  function matchN(a,b){ const n=normN(a),t=normN(b); return n===t||n.includes(t)||t.includes(n); }
+  const XQ_KW=['x-quang','xquang','x quang','chụp xq','chụp x-q','xray','x.quang','chụp phổi','chụp bụng','chụp xương','chụp cột sống','chụp khớp','chụp sọ','chụp ngực'];
+  const isXQ=t=>t&&XQ_KW.some(kw=>t.toLowerCase().includes(kw));
+  const xqRecs=[];
+  for(const r of data.xml3){
+    if(!isXQ(r.TEN_DICH_VU)) continue;
+    const maT=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim(); const hs=hoSoMap[r.MA_LK];
+    xqRecs.push({MA_LK:r.MA_LK,tenBN:hs?.HO_TEN||'?',maBN:hs?.MA_BN||'?',tenDV:r.TEN_DICH_VU||'X-quang',
+      maThucHien:maT,tenThucHien:cchnMap[maT]||maT,
+      tStart:parseDate(r.NGAY_TH_YL||r.NGAY_YL),tEnd:parseDate(r.NGAY_KQ),
+      tStartRaw:r.NGAY_TH_YL||r.NGAY_YL,tEndRaw:r.NGAY_KQ,maDVKT:r.MA_DICH_VU});
+  }
+  const xml4Map={};
+  if(data.xml4) for(const r of data.xml4){
+    const maBS=String(r.MA_BS_DOC_KQ||r.MA_BAC_SI||'').trim();
+    const k=(r.MA_LK||'')+'||'+(r.MA_DICH_VU||'');
+    if(!xml4Map[k]) xml4Map[k]={maDocKQ:maBS,tenDocKQ:cchnMap[maBS]||maBS,ngayKQ:r.NGAY_KQ};
+  }
+  const xq1=[],xq2=[],xq3=[];
+  for(const rec of xqRecs){
+    const dk=rec.MA_LK+'||'+(rec.maDVKT||''); const di=xml4Map[dk];
+    if(di){ const vp=XQ_PAIRS.find(p=>matchN(di.tenDocKQ,p.docKQ));
+      if(vp&&!matchN(rec.tenThucHien,vp.thucHien)) xq1.push({...rec,tenDocKQ:di.tenDocKQ,maDocKQ:di.maDocKQ,thucHienExpected:vp.thucHien,thucHienActual:rec.tenThucHien}); }
+    if(rec.tStart&&rec.tEnd){ const dur=minutesDiff(rec.tStart,rec.tEnd); if(dur!==4) xq2.push({...rec,durActual:dur}); }
+  }
+  const xqByTH={};
+  for(const rec of xqRecs){ if(!rec.tStart) continue; if(!xqByTH[rec.maThucHien]) xqByTH[rec.maThucHien]=[]; xqByTH[rec.maThucHien].push(rec); }
+  for(const recs of Object.values(xqByTH)){
+    recs.sort((a,b)=>a.tStart-b.tStart);
+    for(let i=0;i<recs.length-1;i++){
+      const c=recs[i],n=recs[i+1];
+      const gS=minutesDiff(c.tStart,n.tStart); const gE=c.tEnd&&n.tEnd?minutesDiff(c.tEnd,n.tEnd):null;
+      if(gS<2||(gE!==null&&gE<2)) xq3.push({caBefore:c,caAfter:n,gapStart:gS,gapEnd:gE,startTooClose:gS<2,endTooClose:gE!==null&&gE<2});
+    }
+  }
+  if(xq1.length) errors.xungdotXQ.push({loai:'XQ1',items:xq1});
+  if(xq2.length) errors.xungdotXQ.push({loai:'XQ2',items:xq2});
+  if(xq3.length) errors.xungdotXQ.push({loai:'XQ3',items:xq3});
+  const totalXQ=xq1.length+xq2.length+xq3.length;
+  log(`→ X-quang: ${xq1.length} sai cặp · ${xq2.length} sai thời gian · ${xq3.length} khoảng cách gần`, totalXQ>0?'err':'ok');
+
+  // ══════════════════════════════════════════════════════
+  // M5: CHỒNG GIỜ SIÊU ÂM – XQ
+  //
+  // [SA-1] CHỒNG GIỜ SIÊU ÂM CÙNG BÁC SĨ:
+  //   Cùng BS thực hiện 2 ca siêu âm có khoảng [NGAY_TH_YL → NGAY_KQ] chồng nhau.
+  //   Ca sau chỉ được bắt đầu sau khi ca trước kết thúc.
+  //
+  // [SA-2] CHỒNG GIỜ SIÊU ÂM CÙNG BỆNH NHÂN (khác bác sĩ):
+  //   Cùng 1 BN đang được siêu âm bởi BS A, không được đồng thời siêu âm bởi BS B.
+  //   Khoảng [NGAY_TH_YL → NGAY_KQ] của 2 ca cùng BN không được chồng nhau.
+  //
+  // [SA-3] BS ĐỌC KQ XQ TRONG KHI ĐANG THỰC HIỆN SIÊU ÂM:
+  //   Thời điểm BS đọc KQ XQ (NGAY_KQ từ XML4) không được nằm trong khoảng
+  //   [NGAY_TH_YL → NGAY_KQ siêu âm] của chính BS đó.
+  //   (Các quy tắc XQ khác vẫn áp dụng độc lập qua module XQ.)
+  // ══════════════════════════════════════════════════════
+  log('Kiểm tra chồng giờ siêu âm & xung đột XQ trong giờ siêu âm...');
+
+  const SA_KW=['siêu âm','siêu am','sieu am','sieu âm','sa bụng','sa tim','sa tuyến','sa gan',
+    'sa thận','sa phụ khoa','sa vú','sa cổ','sa khớp','sa mạch','sa tuyến giáp',
+    'doppler','echo tim','echocardiography'];
+  const isSA=t=>{ if(!t) return false; const s=t.toLowerCase();
+    return SA_KW.some(kw=>s.includes(kw)); };
+
+  // Thu thập tất cả ca siêu âm có đủ [tStart, tEnd]
+  const saSessions=[];
+  for(const r of data.xml3){
+    if(!isSA(r.TEN_DICH_VU)) continue;
+    const maBS=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim();
+    if(!maBS||maBS==='0') continue;
+    const tS=parseDate(r.NGAY_TH_YL||r.NGAY_YL);
+    const tE=parseDate(r.NGAY_KQ);
+    if(!tS||!tE||tE<=tS) continue;
+    const hs=hoSoMap[r.MA_LK];
+    saSessions.push({
+      maBS, MA_LK:r.MA_LK,
+      maDVKT:r.MA_DICH_VU||'',
+      tenDV:r.TEN_DICH_VU||'Siêu âm',
+      tStart:tS, tEnd:tE,
+      tStartRaw:r.NGAY_TH_YL||r.NGAY_YL, tEndRaw:r.NGAY_KQ,
+      tenBS:docFull(maBS),
+      tenBN:hs?.HO_TEN||'?', maBN:hs?.MA_BN||'?',
+    });
+  }
+  log(`  Tổng ca siêu âm có đủ thời gian: ${saSessions.length}`);
+
+  const sa1=[],sa2=[],sa3=[];
+  const sa1Pairs=new Set(), sa2Pairs=new Set();
+
+  // SA-1: Chồng giờ cùng bác sĩ
+  for(let i=0;i<saSessions.length;i++){
+    const a=saSessions[i];
+    for(let j=i+1;j<saSessions.length;j++){
+      const b=saSessions[j];
+      if(a.maBS!==b.maBS) continue;
+      // Chỉ coi là "dữ liệu trùng" khi cùng BN, cùng mã dịch vụ, cùng giờ bắt đầu/kết thúc.
+      // Nếu cùng BN nhưng khác dịch vụ hoặc khác giờ => vẫn phải kiểm tra chồng giờ bình thường
+      // (vd: cùng 1 bác sĩ, cùng 1 BN, nhưng siêu âm bụng và siêu âm tim bị chồng giờ).
+      const isDupRow=a.MA_LK===b.MA_LK&&a.maDVKT===b.maDVKT&&a.tStart.getTime()===b.tStart.getTime()&&a.tEnd.getTime()===b.tEnd.getTime();
+      if(isDupRow) continue;
+      // Chồng giờ HOẶC sát giờ (ca sau bắt đầu đúng lúc/trước khi ca trước kết thúc) đều là lỗi
+      if(a.tStart<=b.tEnd && b.tStart<=a.tEnd){
+        const pk=[a.MA_LK,b.MA_LK].sort().join('|')+'|'+a.maBS+'|'+a.maDVKT+'|'+b.maDVKT;
+        if(!sa1Pairs.has(pk)){
+          sa1Pairs.add(pk);
+          const oStart=a.tStart>b.tStart?a.tStart:b.tStart;
+          const oEnd  =a.tEnd  <b.tEnd  ?a.tEnd  :b.tEnd;
+          sa1.push({ caA:a, caB:b, overlapMin:minutesDiff(oStart,oEnd) });
+        }
+      }
+    }
+  }
+
+  // SA-2: Chồng giờ cùng bệnh nhân (khác bác sĩ)
+  for(let i=0;i<saSessions.length;i++){
+    const a=saSessions[i];
+    for(let j=i+1;j<saSessions.length;j++){
+      const b=saSessions[j];
+      if(a.MA_LK!==b.MA_LK) continue;  // phải cùng BN
+      if(a.maBS===b.maBS) continue;     // phải khác BS (cùng BS đã xử lý ở SA-1)
+      // Chồng giờ HOẶC sát giờ (ca sau bắt đầu đúng lúc/trước khi ca trước kết thúc) đều là lỗi
+      if(a.tStart<=b.tEnd && b.tStart<=a.tEnd){
+        const pk=[a.maBS,b.maBS].sort().join('|')+'|'+a.MA_LK;
+        if(!sa2Pairs.has(pk)){
+          sa2Pairs.add(pk);
+          const oStart=a.tStart>b.tStart?a.tStart:b.tStart;
+          const oEnd  =a.tEnd  <b.tEnd  ?a.tEnd  :b.tEnd;
+          sa2.push({ caA:a, caB:b, overlapMin:minutesDiff(oStart,oEnd) });
+        }
+      }
+    }
+  }
+
+  // SA-3: BS đọc KQ XQ trong khi đang thực hiện siêu âm
+  // Dùng lại xqRecs (đã lọc đúng dịch vụ X-quang từ XML3, đáng tin cậy) + xml4Map
+  // (tra cứu người đọc KQ theo MA_LK+MA_DICH_VU, đã xây dựng ở module M4) thay vì
+  // tự lọc trực tiếp theo TEN_DICH_VU trong XML4 — cột này có thể trống/khác định dạng
+  // trong XML4 thực tế, khiến mọi sự kiện đọc KQ XQ bị loại bỏ oan trước khi kịp so giờ.
+  {
+    const sa3Reported=new Set();
+    for(const sess of saSessions){
+      for(const rec of xqRecs){
+        const dk=rec.MA_LK+'||'+(rec.maDVKT||'');
+        const di=xml4Map[dk];
+        if(!di) continue; // không có dữ liệu người đọc KQ tương ứng trong XML4
+        if(di.maDocKQ!==sess.maBS) continue;
+        const tgRaw=di.ngayKQ||rec.tEndRaw;
+        const tgDate=di.ngayKQ?parseDate(di.ngayKQ):rec.tEnd;
+        if(!tgDate) continue;
+        if(tgDate>=sess.tStart && tgDate<=sess.tEnd){
+          const pairKey=sess.MA_LK+'|'+sess.maBS+'|'+tgKey(tgRaw);
+          if(!sa3Reported.has(pairKey)){
+            sa3Reported.add(pairKey);
+            const bnXQ=hoSoMap[rec.MA_LK];
+            sa3.push({
+              sess,                               // ca siêu âm đang thực hiện
+              xqDocTime:tgDate, xqDocRaw:tgRaw,
+              xqBN_LK:rec.MA_LK,
+              xqBN_Ten:bnXQ?.HO_TEN||'?',
+              xqBN_Ma:bnXQ?.MA_BN||'?',
+              tenDV_XQ:rec.tenDV,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const totalSA=sa1.length+sa2.length+sa3.length;
+  if(sa1.length) errors.sieuAmXQ.push({loai:'SA1',items:sa1});
+  if(sa2.length) errors.sieuAmXQ.push({loai:'SA2',items:sa2});
+  if(sa3.length) errors.sieuAmXQ.push({loai:'SA3',items:sa3});
+  log(`→ Siêu âm–XQ: SA-1 chồng giờ cùng BS ${sa1.length} · SA-2 chồng giờ cùng BN ${sa2.length} · SA-3 đọc XQ trong giờ SA ${sa3.length}`, totalSA>0?'err':'ok');
+
+  // ══════════════════════════════════════════════════════
+  // M6: ĐIỆN TIM - NỘI SOI THỰC QUẢN
+  //
+  // [RULE-1] KHOẢNG CÁCH ĐIỆN TIM CÙNG MÃ MÁY:
+  //   Nếu cùng bác sĩ thực hiện điện tim (phân biệt theo mã máy ĐT), 
+  //   thời gian thực hiện Y lệnh ca liền kề sau phải cách ca trước >= 4 phút.
+  //
+  // [RULE-2] ĐIỆN TIM TRƯỚC NỘI SOI THỰC QUẢN:
+  //   Nếu BN vừa có CLS điện tim vừa có nội soi thực quản dạ dày, tá tràng,
+  //   thì kết quả điện tim phải cách từ 3 phút trở lên mới được bắt đầu
+  //   thực hiện y lệnh nội soi dạ dày, tá tràng.
+  // ══════════════════════════════════════════════════════
+  log('Kiểm tra điện tim – nội soi thực quản...');
+
+  // Từ khóa nhận diện dịch vụ ĐIỆN TIM (XML3)
+  const DT_KW=['điện tim','dien tim','ecg','điện sinh học tim','ekg','điện tâm đồ'];
+  const isDT=t=>t&&DT_KW.some(kw=>t.toLowerCase().includes(kw));
+
+  // Từ khóa nhận diện dịch vụ NỘI SOI THỰC QUẢN (XML3)
+  const NSDAQ_KW=['nội soi thực quản','nội soi thực quyản','endoscopy dạ dày','nội soi dạ dày','nội soi tá tràng','nội soi tiêu hóa','endoscopy','egds'];
+  const isNSDAQ=t=>t&&NSDAQ_KW.some(kw=>t.toLowerCase().includes(kw));
+
+  const dt_rule1=[], dt_rule2=[];
+
+  // Thu thập tất cả ca điện tim theo bác sĩ
+  const dtByBS={};
+  for(const r of data.xml3){
+    if(!isDT(r.TEN_DICH_VU)) continue;
+    const maBS=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim();
+    const maMay=String(r.MA_DICH_VU||'').trim(); // mã máy điện tim
+    if(!maBS||maBS==='0') continue;
+    const tStart=parseDate(r.NGAY_TH_YL||r.NGAY_YL);
+    if(!tStart) continue;
+    const key=maBS+'||'+maMay;
+    if(!dtByBS[key]) dtByBS[key]={maBS,maMay,items:[]};
+    dtByBS[key].items.push({tStart,tStartRaw:r.NGAY_TH_YL||r.NGAY_YL,MA_LK:r.MA_LK,tenDV:r.TEN_DICH_VU,tEnd:parseDate(r.NGAY_KQ),tEndRaw:r.NGAY_KQ});
+  }
+
+  // RULE-1: Kiểm tra khoảng cách >= 4 phút giữa các ca liên tiếp cùng BS, cùng mã máy
+  // So sánh NGAY_TH_YL (ca trước) → NGAY_TH_YL (ca sau)
+  for(const key of Object.keys(dtByBS)){
+    const group=dtByBS[key];
+    group.items.sort((a,b)=>a.tStart-b.tStart);
+    for(let i=0;i<group.items.length-1;i++){
+      const curr=group.items[i];
+      const next=group.items[i+1];
+      if(!curr.tStart||!next.tStart) continue;
+      const gapMin=minutesDiff(curr.tStart,next.tStart);
+      if(gapMin<4){
+        const hs1=hoSoMap[curr.MA_LK];
+        const hs2=hoSoMap[next.MA_LK];
+        dt_rule1.push({
+          type:'rule1',
+          maBS:group.maBS,
+          tenBS:docFull(group.maBS),
+          maMay:group.maMay,
+          caBefore:{MA_LK:curr.MA_LK,tenBN:hs1?.HO_TEN||'?',maBN:hs1?.MA_BN||'?',tenDV:curr.tenDV,tStart:curr.tStart,tEnd:curr.tEnd},
+          caAfter:{MA_LK:next.MA_LK,tenBN:hs2?.HO_TEN||'?',maBN:hs2?.MA_BN||'?',tenDV:next.tenDV,tStart:next.tStart,tEnd:next.tEnd},
+          gapMin,
+          error:`Khoảng cách ${gapMin} phút < 4 phút`
+        });
+      }
+    }
+  }
+
+  // RULE-2: Kiểm tra khoảng cách điện tim → nội soi thực quản >= 3 phút
+  const dtByBN={};
+  for(const r of data.xml3){
+    if(!isDT(r.TEN_DICH_VU)) continue;
+    const MA_LK=r.MA_LK;
+    if(!MA_LK) continue;
+    const tEnd=parseDate(r.NGAY_KQ);
+    if(!tEnd) continue;
+    if(!dtByBN[MA_LK]) dtByBN[MA_LK]={items:[]};
+    dtByBN[MA_LK].items.push({tEnd,tEndRaw:r.NGAY_KQ,tenDV:r.TEN_DICH_VU});
+  }
+
+  const nsDAQByBN={};
+  for(const r of data.xml3){
+    if(!isNSDAQ(r.TEN_DICH_VU)) continue;
+    const MA_LK=r.MA_LK;
+    const maBS=String(r.NGUOI_THUC_HIEN||r.MA_BAC_SI||'').trim();
+    if(!MA_LK||!maBS||maBS==='0') continue;
+    const tStart=parseDate(r.NGAY_TH_YL||r.NGAY_YL);
+    if(!tStart) continue;
+    if(!nsDAQByBN[MA_LK]) nsDAQByBN[MA_LK]={items:[]};
+    nsDAQByBN[MA_LK].items.push({tStart,tStartRaw:r.NGAY_TH_YL||r.NGAY_YL,maBS,tenBS:docFull(maBS),tenDV:r.TEN_DICH_VU});
+  }
+
+  for(const malk of Object.keys(dtByBN)){
+    const dtList=dtByBN[malk]?.items||[];
+    const nsList=nsDAQByBN[malk]?.items||[];
+    if(!dtList.length||!nsList.length) continue;
+    const hs=hoSoMap[malk];
+    for(const dt of dtList){
+      for(const ns of nsList){
+        const gapMin=minutesDiff(dt.tEnd,ns.tStart);
+        if(gapMin<3){
+          dt_rule2.push({
+            type:'rule2',
+            MA_LK:malk,
+            tenBN:hs?.HO_TEN||'?',
+            maBN:hs?.MA_BN||'?',
+            dienTim:{tEnd:dt.tEnd,tenDV:dt.tenDV},
+            noiSoi:{tStart:ns.tStart,maBS:ns.maBS,tenBS:ns.tenBS,tenDV:ns.tenDV},
+            gapMin,
+            error:`Khoảng cách ${gapMin} phút < 3 phút`
+          });
+        }
+      }
+    }
+  }
+
+  if(dt_rule1.length) errors.dienTim_noiSoi.push({rule:'rule1',items:dt_rule1});
+  if(dt_rule2.length) errors.dienTim_noiSoi.push({rule:'rule2',items:dt_rule2});
+  const totalDT=dt_rule1.length+dt_rule2.length;
+  log(`→ Điện tim–Nội soi: Rule-1 khoảng cách ca liên tiếp ${dt_rule1.length} · Rule-2 điện tim→nội soi ${dt_rule2.length}`, totalDT>0?'err':'ok');
+
+  const grandTotal=errors.phanthan.length+errors.gioyLenhSauRaVien.length+errors.khamTrungThuoc.length+errors.xungdotNoiSoi.length+totalXQ+totalSA+totalDT;
+  log(`Hoàn tất — phát hiện ${grandTotal} vấn đề.`, grandTotal>0?'err':'ok');
+
+  renderResults(errors);
+}
+
+// ─── HELPERS: SORT & GROUP ─────────────────────────────────
+const sortByTime=(items)=>{
+  if(!items||!Array.isArray(items)) return items;
+  return [...items].sort((a,b)=>{
+    const tA=a.tStart||a.tHour||a.NGAY_TH_YL||a.thoiGian||0;
+    const tB=b.tStart||b.tHour||b.NGAY_TH_YL||b.thoiGian||0;
+    // thoiGian là chuỗi tgKey dạng YYYYMMDDHHMM (số) -> so sánh số trực tiếp
+    if(/^\d{8,}$/.test(String(tA)) && /^\d{8,}$/.test(String(tB))) return Number(tA)-Number(tB);
+    return (new Date(tA).getTime()||0)-(new Date(tB).getTime()||0);
+  });
+};
+
+const groupByField=(items,field)=>{
+  const groups={};
+  (items||[]).forEach(item=>{
+    const key=item[field]||'Không xác định';
+    if(!groups[key]) groups[key]={name:key,items:[]};
+    groups[key].items.push(item);
+  });
+  return Object.values(groups);
+};
+
+// ─── RENDER ──────────────────────────────────────────────
+function renderResults(E) {
+  const div=document.getElementById('results'); div.innerHTML='';
+  const totalXQ=E.xungdotXQ.reduce((s,g)=>s+g.items.length,0);
+  const totalSA=E.sieuAmXQ.reduce((s,g)=>s+g.items.length,0);
+  const totalDT=E.dienTim_noiSoi.reduce((s,g)=>s+g.items.length,0);
+  const grand=E.phanthan.length+E.gioyLenhSauRaVien.length+E.khamTrungThuoc.length+E.xungdotNoiSoi.length+totalXQ+totalSA+totalDT;
+
+  // Sort all items by time
+  E.phanthan=sortByTime(E.phanthan);
+  E.gioyLenhSauRaVien=sortByTime(E.gioyLenhSauRaVien);
+  E.khamTrungThuoc=sortByTime(E.khamTrungThuoc);
+  E.xungdotNoiSoi=sortByTime(E.xungdotNoiSoi);
+  E.xungdotXQ=E.xungdotXQ.map(g=>({...g,items:sortByTime(g.items)}));
+  E.sieuAmXQ=E.sieuAmXQ.map(g=>({...g,items:sortByTime(g.items)}));
+  E.dienTim_noiSoi=E.dienTim_noiSoi.map(g=>({...g,items:sortByTime(g.items)}));
+
+  // Update hero stat
+  const heroStat=document.querySelector('.stat:nth-child(3) .stat-value');
+  if(heroStat) heroStat.textContent=grand;
+
+  // Update sidebar nav
+  const updateNav=(id,count,navId,ncId)=>{
+    const nav=document.getElementById(navId); const nc=document.getElementById(ncId);
+    if(count>0){ nav.classList.remove('nav-ok'); nav.classList.add('nav-err'); nc.textContent=count; nc.style.display=''; }
+    else { nav.classList.add('nav-ok'); nc.style.display='none'; }
+  };
+  updateNav('m1',E.phanthan.length,'nav-m1','ncount1');
+  updateNav('m2',E.gioyLenhSauRaVien.length+E.khamTrungThuoc.length,'nav-m2','ncount2');
+  updateNav('m3',E.xungdotNoiSoi.length,'nav-m3','ncount3');
+  updateNav('m4',totalXQ,'nav-m4','ncount4');
+  updateNav('m5',totalSA,'nav-m5','ncount5');
+  updateNav('m6',totalDT,'nav-m6','ncount6');
+
+  // Scorecard
+  const sc=document.createElement('div'); sc.className='scorecard';
+  sc.innerHTML=`
+    <div class="score-card total ${grand>0?'err':'ok'}">
+      <div class="score-n">${grand}</div>
+      <div class="score-label">Tổng vấn đề phát hiện</div>
+      <div class="score-sub">Từ ${(data.xml1?.length||0).toLocaleString('vi')} hồ sơ bệnh nhân</div>
+    </div>
+    <div class="score-card ${E.phanthan.length>0?'err':'ok'}">
+      <div class="score-n">${E.phanthan.length}</div>
+      <div class="score-label">Xung đột giờ bác sĩ</div>
+      <div class="score-sub">Phân thân & đọc CLS đồng thời</div>
+    </div>
+    <div class="score-card ${(E.gioyLenhSauRaVien.length+E.khamTrungThuoc.length)>0?'err':'ok'}">
+      <div class="score-n">${E.gioyLenhSauRaVien.length+E.khamTrungThuoc.length}</div>
+      <div class="score-label">Y lệnh thuốc bất hợp lệ</div>
+      <div class="score-sub">Sai giờ · trùng CLS · trùng khám</div>
+    </div>
+    <div class="score-card ${E.xungdotNoiSoi.length>0?'err':'ok'}">
+      <div class="score-n">${E.xungdotNoiSoi.length}</div>
+      <div class="score-label">Vi phạm TMH</div>
+      <div class="score-sub">Y lệnh trong giờ · Chồng giờ · Khám < 1 phút</div>
+    </div>
+    <div class="score-card ${totalXQ>0?'err':'ok'}">
+      <div class="score-n">${totalXQ}</div>
+      <div class="score-label">Vi phạm X-quang</div>
+      <div class="score-sub">Cặp người · thời gian · khoảng cách</div>
+    </div>
+    <div class="score-card ${totalSA>0?'err':'ok'}">
+      <div class="score-n">${totalSA}</div>
+      <div class="score-label">Chồng giờ Siêu âm – XQ</div>
+      <div class="score-sub">Cùng BS · cùng BN · đọc XQ trong giờ SA</div>
+    </div>
+    <div class="score-card ${totalDT>0?'err':'ok'}">
+      <div class="score-n">${totalDT}</div>
+      <div class="score-label">Điện tim – Nội soi</div>
+      <div class="score-sub">Khoảng cách ca · thời gian chuyển tiếp</div>
+    </div>`;
+  div.appendChild(sc);
+
+  if(grand===0){ div.innerHTML+=`<div class="empty-state"><div class="empty-ico">✅</div><div class="empty-msg">Không phát hiện vấn đề nào trong dữ liệu đã tải.</div></div>`; return; }
+
+  // ── M1: XUNG ĐỘT LỊCH CÔNG TÁC ──────────────────────────────
+  if(E.phanthan.length>0){
+    const mod=makeModule('mod-phanthan','Xung đột Giờ Bác sĩ','Phân thân · Đọc CLS đồng thời y lệnh',E.phanthan.length,'','🗓');
+    const bsMap={};
+    for(const e of E.phanthan){ if(!bsMap[e.maBS]) bsMap[e.maBS]={maBS:e.maBS,tenBS:e.tenBS,caList:[]}; bsMap[e.maBS].caList.push(e); }
+    const bsList=Object.values(bsMap);
+    const md=document.createElement('div'); md.className='master-detail';
+    const ml=document.createElement('div'); ml.className='master-list';
+    ml.innerHTML=`<div class="master-sticky">Bác sĩ bị lỗi <span class="chip chip-red">${bsList.length}</span></div>`;
+    const dp=document.createElement('div'); dp.className='detail-panel';
+    bsList.forEach((bs,i)=>{
+      const ylN=bs.caList.filter(c=>c.isPhanThan).length;
+      const clN=bs.caList.filter(c=>c.isClsConcurrent).length;
+      const item=document.createElement('div'); item.className='master-item'+(i===0?' active':'');
+      item.innerHTML=`<div class="master-name">${bs.tenBS}</div><div class="master-meta">${ylN>0?`<span class="chip chip-red">${ylN} phân thân</span>`:''} ${clN>0?`<span class="chip chip-amber">${clN} đọc CLS</span>`:''}</div>`;
+      item.onclick=()=>{ md.querySelectorAll('.master-item').forEach(x=>x.classList.remove('active')); item.classList.add('active'); renderBSDetail(dp,bs); };
+      ml.appendChild(item);
+    });
+    md.appendChild(ml); md.appendChild(dp);
+    mod.querySelector('.module-body').appendChild(md);
+    div.appendChild(mod);
+    if(bsList.length) renderBSDetail(dp,bsList[0]);
+  }
+
+  // ── M2: Y LỆNH THUỐC ─────────────────────────────────────────
+  if(E.gioyLenhSauRaVien.length>0||E.khamTrungThuoc.length>0){
+    const totalM2=E.gioyLenhSauRaVien.length+E.khamTrungThuoc.length;
+    const mod=makeModule('mod-yeLenh','Y lệnh Thuốc Bất hợp lệ','Sau giờ ra viện · Trùng CLS · Trùng y lệnh khám',totalM2,'amber','💊');
+    const afterRA=E.gioyLenhSauRaVien.filter(e=>e.thuocLoi.some(t=>t.isAfterRA));
+    const trungCLS=E.gioyLenhSauRaVien.filter(e=>e.thuocLoi.some(t=>t.isTrungCLS));
+    if(afterRA.length) mod.querySelector('.module-body').appendChild(makeSub('Chỉ định thuốc sau giờ ra viện',afterRA.length,'',buildDrugTable(afterRA,'afterRA')));
+    
+    // Cập nhật: Ghi rõ tên CLS cho trungCLS
+    if(trungCLS.length){
+      const sorted=sortByTime(trungCLS);
+      let rows='';
+      for(const e of sorted){
+        const clsList=e.thuocLoi.filter(t=>t.isTrungCLS).map(t=>{
+          const clsName=t.clsName||'CLS (không tra được tên DV, kiểm tra MA_DICH_VU)';
+          return `<div style="margin-bottom:4px">
+            <span class="pill pill-drug">💊 ${t.thuoc}</span>
+            <span class="t-inline">${fmtDate(t.ngayYL)}</span>
+            <span class="chip chip-amber">🔬 ${clsName}</span>
+          </div>`;
+        }).join('');
+        rows+=`<tr>
+          <td>${e.MA_LK}</td>
+          <td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td>
+          <td>${e.tenBS}</td>
+          <td>${e.ngayRA?`<span class="t-pill">${fmtDate(e.ngayRA)}</span>`:'—'}</td>
+          <td>${clsList}</td>
+        </tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Thời điểm y lệnh trùng khớp kết quả CLS cùng bệnh nhân (ghi rõ CLS)',
+        trungCLS.length,'amber',
+        `<div class="dt-wrap"><table class="dt">
+          <thead><tr><th>Mã hồ sơ</th><th>Bệnh nhân</th><th>Bác sĩ</th><th>Giờ ra viện</th><th>Thuốc & CLS</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      ));
+    }
+
+    // Sub-group mới: khám trùng phút với thuốc
+    if(E.khamTrungThuoc.length){
+      const sorted=sortByTime(E.khamTrungThuoc);
+      const grouped=groupByField(sorted,'tenBS');
+      let groupHTML='';
+      for(const grp of grouped){
+        let rows='';
+        for(const e of grp.items){
+          const confRows=sortByTime(e.conflicts).map(c=>`
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);">
+              <div style="flex:1">
+                <span class="pill pill-svc">🩺 ${c.kham.ten}</span>
+                <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-left:6px">${fmtDate(c.kham.tg)}</span>
+              </div>
+              <div style="color:var(--ink-faint);font-size:12px;padding-top:3px;flex-shrink:0">↔ 0 phút</div>
+              <div style="flex:1;text-align:right">
+                <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-right:6px">${fmtDate(c.thuoc.tg)}</span>
+                <span class="pill pill-drug">💊 ${c.thuoc.ten}</span>
+              </div>
+            </div>`).join('');
+          rows+=`<tr>
+            <td>${e.MA_LK}</td>
+            <td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td>
+            <td><span class="chip chip-blue">📋 ${e.tenBS}</span></td>
+            <td><span class="chip chip-red">${e.conflicts.length} cặp xung đột</span></td>
+            <td><div style="min-width:480px">${confRows}</div></td>
+          </tr>`;
+        }
+        groupHTML+=`
+          <div style="margin-bottom:16px">
+            <h4 style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line)">👨‍⚕️ ${grp.name}</h4>
+            <table class="dt" style="width:100%">
+              <thead><tr><th>Mã hồ sơ</th><th>Bệnh nhân</th><th>Bác sĩ</th><th>Số cặp</th><th>Chi tiết xung đột</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Y lệnh khám bệnh trùng phút với y lệnh thuốc cùng bệnh nhân (phải cách ≥ 1 phút)',
+        E.khamTrungThuoc.length,'amber',
+        `<div class="dt-wrap" style="background:transparent">${groupHTML}</div>`
+      ));
+    }
+    div.appendChild(mod);
+  }
+
+  // ── M3: NỘI SOI TMH ──────────────────────────────────────────
+  if(E.xungdotNoiSoi.length>0){
+    const loaiA=E.xungdotNoiSoi.filter(e=>e.loaiLoi==='A');
+    const loaiB=E.xungdotNoiSoi.filter(e=>e.loaiLoi==='B');
+    const mod=makeModule('mod-noisoi','Vi phạm Nội soi Tai Mũi Họng','Y lệnh trong giờ thủ thuật · Chồng giờ hai ca',E.xungdotNoiSoi.length,'violet','👃');
+    if(loaiA.length){
+      let rows='';
+      for(const e of loaiA){
+        const s=e.sess; const dur=minutesDiff(s.tStart,s.tEnd);
+        const bns=e.conflictBNs.map(b=>{
+          const pills=b.yLenh.map(yl=>`<span class="pill ${yl.loai==='Thuốc'?'pill-drug':'pill-svc'}">${yl.loai==='Thuốc'?'💊':'🔬'} ${yl.ten}</span>`).join(' ');
+          return `<div class="bn-row"><div class="bn-name">${b.tenBN} <span class="bn-code">${b.maBN}</span> ${b.isSameBN?'<span class="chip chip-amber" style="font-size:10px">BN đang nội soi</span>':'<span class="chip chip-red" style="font-size:10px">BN khác</span>'}</div><div class="bn-pills">${pills}</div></div>`;
+        }).join('');
+        rows+=`<tr><td>${s.MA_LK}</td><td><b>${s.tenBS}</b></td><td><b>${s.tenDV}</b><br><span class="bn-code">${s.tenBN} · ${s.maBN}</span><br>
+          <span class="time-range"><span class="time-val">${fmtDate(s.tStart)}</span><span class="sep">→</span><span class="time-val">${fmtDate(s.tEnd)}</span></span><span class="dur-badge">${dur} phút</span></td><td>${bns}</td></tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub('Y lệnh xuất hiện trong thời gian thực hiện thủ thuật',loaiA.length,'',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã HS</th><th>Bác sĩ</th><th>Ca nội soi đang thực hiện</th><th>Y lệnh xung đột</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    if(loaiB.length){
+      let rows='';
+      for(const e of loaiB){
+        const a=e.mainSess; const dA=minutesDiff(a.tStart,a.tEnd);
+        const ovStr=e.overlapSessions.map(b=>{
+          const dB=minutesDiff(b.tStart,b.tEnd);
+          const oS=a.tStart>b.tStart?a.tStart:b.tStart; const oE=a.tEnd<b.tEnd?a.tEnd:b.tEnd;
+          return `<div class="bn-row"><div class="bn-name">${b.tenBN} <span class="bn-code">${b.maBN}</span> <span class="chip chip-red" style="font-size:10px">${overlapLabel(minutesDiff(oS,oE))}</span></div>
+            <span class="time-range"><span class="time-val">${fmtDate(b.tStart)}</span><span class="sep">→</span><span class="time-val">${fmtDate(b.tEnd)}</span></span><span class="dur-badge">${dB} phút</span></div>`;
+        }).join('');
+        rows+=`<tr><td>${a.MA_LK}</td><td><b>${a.tenBS}</b></td><td><b>${a.tenDV}</b><br><span class="bn-code">${a.tenBN} · ${a.maBN}</span><br>
+          <span class="time-range"><span class="time-val">${fmtDate(a.tStart)}</span><span class="sep">→</span><span class="time-val">${fmtDate(a.tEnd)}</span></span><span class="dur-badge">${dA} phút</span></td><td>${ovStr}</td></tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub('Hai ca nội soi của cùng bác sĩ có khoảng thời gian chồng nhau',loaiB.length,'amber',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã HS</th><th>Bác sĩ</th><th>Ca đang thực hiện</th><th>Ca chồng giờ</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+
+    // Loại C: Y lệnh KHÁM TMH < 1 phút với y lệnh khác cùng bệnh nhân
+    const loaiC_render=E.xungdotNoiSoi.filter(e=>e.loaiLoi==='C');
+    if(loaiC_render.length){
+      const grouped={};
+      for(const e of loaiC_render){
+        const k=e.tenBS||e.maBS||'Không xác định';
+        if(!grouped[k]) grouped[k]={tenBS:k,items:[]};
+        grouped[k].items.push(e);
+      }
+      let groupHTML='';
+      for(const grp of Object.values(grouped)){
+        let rows='';
+        for(const e of grp.items){
+          const confRows=e.conflicts.map(c=>{
+            const diff=Math.abs(minutesDiff(c.tgDate,e.tgKham));
+            return `<div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);">
+              <div style="flex:1">
+                <span class="pill pill-svc">🩺 ${e.tenDV}</span>
+                <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-left:6px">${fmtDate(e.tgKham)}</span>
+              </div>
+              <div style="color:var(--red);font-size:11px;font-weight:700;padding-top:3px;flex-shrink:0">← ${diff} phút →</div>
+              <div style="flex:1;text-align:right">
+                <span style="font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-right:6px">${fmtDate(c.tgDate)}</span>
+                <span class="pill ${c.loai==='Thuốc'?'pill-drug':'pill-cls'}">${c.loai==='Thuốc'?'💊':'🔬'} ${c.ten}</span>
+              </div>
+            </div>`;
+          }).join('');
+          rows+=`<tr>
+            <td>${e.MA_LK}</td>
+            <td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td>
+            <td><span class="chip chip-violet">🩺 ${e.tenDV}</span><br>
+              <span class="time-range" style="margin-top:4px"><span class="time-val">${fmtDate(e.tgKham)}</span></span>
+            </td>
+            <td><span class="chip chip-red">${e.conflicts.length} y lệnh cùng phút</span></td>
+            <td><div style="min-width:480px">${confRows}</div></td>
+          </tr>`;
+        }
+        groupHTML+=`<div style="margin-bottom:16px">
+          <h4 style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line)">👨‍⚕️ ${grp.tenBS}</h4>
+          <table class="dt" style="width:100%">
+            <thead><tr><th>Mã hồ sơ</th><th>Bệnh nhân</th><th>Y lệnh Khám TMH</th><th>Vi phạm</th><th>Chi tiết xung đột (phải cách ≥ 1 phút)</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Y lệnh Khám TMH không cách đủ 1 phút với y lệnh khác trên cùng bệnh nhân',
+        loaiC_render.length,'amber',
+        `<div class="dt-wrap" style="background:transparent">${groupHTML}</div>`
+      ));
+    }
+
+    div.appendChild(mod);
+  }
+
+  // ── M4: X-QUANG ──────────────────────────────────────────────
+  if(totalXQ>0){
+    const mod=makeModule('mod-xquang','Vi phạm Chẩn đoán Hình ảnh X-quang','Sai cặp · Sai thời gian · Khoảng cách không hợp lệ',totalXQ,'blue','🩻');
+    const gXQ1=E.xungdotXQ.find(g=>g.loai==='XQ1');
+    const gXQ2=E.xungdotXQ.find(g=>g.loai==='XQ2');
+    const gXQ3=E.xungdotXQ.find(g=>g.loai==='XQ3');
+    if(gXQ1){
+      let rows='';
+      for(const e of gXQ1.items) rows+=`<tr><td>${e.MA_LK}</td><td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td><td>${e.tenDV}</td><td><span class="t-pill">${fmtDate(e.tStartRaw)}</span></td>
+        <td><span class="chip chip-blue">📖 ${e.tenDocKQ}</span></td>
+        <td><div><span class="chip chip-red">Thực tế: ${e.thucHienActual}</span></div><div style="margin-top:5px"><span class="chip chip-amber">Phải là: ${e.thucHienExpected}</span></div></td></tr>`;
+      mod.querySelector('.module-body').appendChild(makeSub('Sai cặp người thực hiện / đọc kết quả X-quang',gXQ1.items.length,'',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã HS</th><th>Bệnh nhân</th><th>Dịch vụ</th><th>Ngày thực hiện</th><th>Người đọc KQ</th><th>Người thực hiện</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    if(gXQ2){
+      let rows='';
+      for(const e of gXQ2.items){
+        const short=e.durActual<4;
+        rows+=`<tr><td>${e.MA_LK}</td><td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td><td>${e.tenDV}</td><td>${e.tenThucHien}</td>
+          <td><span class="t-pill">${fmtDate(e.tStartRaw)}</span></td><td><span class="t-pill">${fmtDate(e.tEndRaw)}</span></td>
+          <td><span class="chip ${short?'chip-amber':'chip-red'}">${e.durActual} phút ${short?'(quá ngắn)':'(quá dài)'}</span><br><span class="bn-code">Chuẩn: 4 phút</span></td></tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub('Thời gian ca chụp không đúng 4 phút (NGAY_KQ − NGAY_TH_YL ≠ 4)',gXQ2.items.length,'amber',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã HS</th><th>Bệnh nhân</th><th>Dịch vụ</th><th>Người TH</th><th>Ngày TH</th><th>Ngày KQ</th><th>Thời gian</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    if(gXQ3){
+      let rows='';
+      for(const e of gXQ3.items){
+        const a=e.caBefore,b=e.caAfter;
+        const sB=e.startTooClose?`<span class="chip chip-red">Ngày TH cách ${e.gapStart} phút</span>`:`<span class="chip chip-green">✓ Ngày TH ${e.gapStart} phút</span>`;
+        const eB=e.gapEnd!==null?(e.endTooClose?`<span class="chip chip-red">Ngày KQ cách ${e.gapEnd} phút</span>`:`<span class="chip chip-green">✓ Ngày KQ ${e.gapEnd} phút</span>`):`<span class="chip chip-muted">Ngày KQ: không có</span>`;
+        rows+=`<tr><td>${a.tenThucHien}</td>
+          <td><b>${a.tenBN}</b> <span class="bn-code">${a.maBN}</span><br><span class="time-range"><span class="time-val">${fmtDate(a.tStartRaw)}</span><span class="sep">→</span><span class="time-val">${fmtDate(a.tEndRaw)}</span></span></td>
+          <td><b>${b.tenBN}</b> <span class="bn-code">${b.maBN}</span><br><span class="time-range"><span class="time-val">${fmtDate(b.tStartRaw)}</span><span class="sep">→</span><span class="time-val">${fmtDate(b.tEndRaw)}</span></span></td>
+          <td><div>${sB}</div><div style="margin-top:5px">${eB}</div></td></tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub('Khoảng cách giữa 2 ca X-quang liên tiếp < 2 phút (cùng người thực hiện)',gXQ3.items.length,'amber',`<div class="dt-wrap"><table class="dt"><thead><tr><th>Người thực hiện</th><th>Ca trước</th><th>Ca kế tiếp</th><th>Khoảng cách</th></tr></thead><tbody>${rows}</tbody></table></div>`));
+    }
+    div.appendChild(mod);
+  }
+
+  // ── M5: CHỒNG GIỜ SIÊU ÂM – XQ ──────────────────────────────
+  if(totalSA>0){
+    const mod=makeModule('mod-sieuxq','Chồng giờ Siêu âm – XQ','Cùng bác sĩ · Cùng bệnh nhân · Đọc XQ trong giờ siêu âm',totalSA,'blue','🔊');
+    const gSA1=E.sieuAmXQ.find(g=>g.loai==='SA1');
+    const gSA2=E.sieuAmXQ.find(g=>g.loai==='SA2');
+    const gSA3=E.sieuAmXQ.find(g=>g.loai==='SA3');
+
+    // helper: hiển thị 1 ca siêu âm dạng inline
+    const renderSess=s=>{
+      const dur=minutesDiff(s.tStart,s.tEnd);
+      return `<b>${s.tenDV}</b><br>
+        <span class="bn-code">👤 ${s.tenBN} · ${s.maBN}</span><br>
+        <span class="time-range">
+          <span class="time-val">${fmtDate(s.tStart)}</span>
+          <span class="sep">→</span>
+          <span class="time-val">${fmtDate(s.tEnd)}</span>
+        </span><span class="dur-badge">${dur} phút</span>`;
+    };
+
+    // SA-1: chồng giờ cùng bác sĩ
+    if(gSA1){
+      let rows='';
+      for(const e of gSA1.items){
+        rows+=`<tr>
+          <td><b>${e.caA.tenBS}</b></td>
+          <td>${renderSess(e.caA)}</td>
+          <td>${renderSess(e.caB)}</td>
+          <td style="text-align:center"><span class="chip chip-red">${overlapLabel(e.overlapMin)}</span></td>
+        </tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Cùng bác sĩ thực hiện 2 ca siêu âm có khoảng thời gian chồng nhau',
+        gSA1.items.length,'',
+        `<div class="dt-wrap"><table class="dt">
+          <thead><tr><th>Bác sĩ</th><th>Ca siêu âm A</th><th>Ca siêu âm B (chồng giờ)</th><th>Mức chồng</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      ));
+    }
+
+    // SA-2: chồng giờ cùng bệnh nhân
+    if(gSA2){
+      let rows='';
+      for(const e of gSA2.items){
+        rows+=`<tr>
+          <td><b>${e.caA.tenBN}</b><br><span class="bn-code">${e.caA.maBN}</span></td>
+          <td>
+            <b>${e.caA.tenBS}</b><br>
+            <span class="bn-code">${e.caA.tenDV}</span><br>
+            <span class="time-range">
+              <span class="time-val">${fmtDate(e.caA.tStart)}</span>
+              <span class="sep">→</span>
+              <span class="time-val">${fmtDate(e.caA.tEnd)}</span>
+            </span><span class="dur-badge">${minutesDiff(e.caA.tStart,e.caA.tEnd)} phút</span>
+          </td>
+          <td>
+            <b>${e.caB.tenBS}</b><br>
+            <span class="bn-code">${e.caB.tenDV}</span><br>
+            <span class="time-range">
+              <span class="time-val">${fmtDate(e.caB.tStart)}</span>
+              <span class="sep">→</span>
+              <span class="time-val">${fmtDate(e.caB.tEnd)}</span>
+            </span><span class="dur-badge">${minutesDiff(e.caB.tStart,e.caB.tEnd)} phút</span>
+          </td>
+          <td style="text-align:center"><span class="chip chip-red">${overlapLabel(e.overlapMin)}</span></td>
+        </tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Cùng bệnh nhân được 2 bác sĩ khác nhau siêu âm đồng thời',
+        gSA2.items.length,'amber',
+        `<div class="dt-wrap"><table class="dt">
+          <thead><tr><th>Bệnh nhân</th><th>Bác sĩ A</th><th>Bác sĩ B (chồng giờ)</th><th>Mức chồng</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      ));
+    }
+
+    // SA-3: bác sĩ đọc KQ XQ trong khi đang thực hiện siêu âm
+    if(gSA3){
+      let rows='';
+      for(const e of gSA3.items){
+        const s=e.sess;
+        const dur=minutesDiff(s.tStart,s.tEnd);
+        const intoSess=minutesDiff(s.tStart,e.xqDocTime);
+        rows+=`<tr>
+          <td><b>${s.tenBS}</b></td>
+          <td>
+            <b>${s.tenDV}</b><br>
+            <span class="bn-code">👤 ${s.tenBN} · ${s.maBN}</span><br>
+            <span class="time-range">
+              <span class="time-val">${fmtDate(s.tStart)}</span>
+              <span class="sep">→</span>
+              <span class="time-val">${fmtDate(s.tEnd)}</span>
+            </span><span class="dur-badge">${dur} phút</span>
+          </td>
+          <td>
+            <span class="pill pill-svc">📋 ${e.tenDV_XQ}</span><br>
+            <span class="bn-code" style="margin-top:4px;display:block">👤 ${e.xqBN_Ten} · ${e.xqBN_Ma}</span>
+            <span class="time-range" style="margin-top:4px">
+              <span class="time-val">${fmtDate(e.xqDocTime)}</span>
+            </span>
+          </td>
+          <td style="text-align:center">
+            <span class="chip chip-red">+${intoSess} phút vào ca SA</span>
+          </td>
+        </tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Bác sĩ đọc kết quả X-quang trong khi đang thực hiện siêu âm cho bệnh nhân khác',
+        gSA3.items.length,'amber',
+        `<div class="dt-wrap"><table class="dt">
+          <thead><tr><th>Bác sĩ</th><th>Ca siêu âm đang thực hiện</th><th>KQ XQ đọc trong giờ SA</th><th>Thời điểm xung đột</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      ));
+    }
+
+    div.appendChild(mod);
+  }
+
+  // ── M6: ĐIỆN TIM – NỘI SOI THỰC QUẢN ─────────────────────
+  if(totalDT>0){
+    const mod=makeModule('mod-dietim','Điện tim – Nội soi Thực quản','Khoảng cách ca liên tiếp · Khoảng cách điện tim → nội soi',totalDT,'violet','⚡');
+    const gDT1=E.dienTim_noiSoi.find(g=>g.rule==='rule1');
+    const gDT2=E.dienTim_noiSoi.find(g=>g.rule==='rule2');
+
+    // RULE-1: Khoảng cách điện tim cùng mã máy < 4 phút
+    if(gDT1){
+      let rows='';
+      for(const e of gDT1.items){
+        rows+=`<tr>
+          <td><b>${e.tenBS}</b><br><span class="bn-code">Máy: ${e.maMay||'—'}</span></td>
+          <td>
+            <b>${e.caBefore.tenBN}</b><br>
+            <span class="bn-code">${e.caBefore.maBN}</span><br>
+            <span class="time-range">
+              <span class="time-val">${fmtDate(e.caBefore.tStart)}</span>
+              <span class="sep">→</span>
+              <span class="time-val">${fmtDate(e.caBefore.tEnd)}</span>
+            </span>
+          </td>
+          <td>
+            <b>${e.caAfter.tenBN}</b><br>
+            <span class="bn-code">${e.caAfter.maBN}</span><br>
+            <span class="time-range">
+              <span class="time-val">${fmtDate(e.caAfter.tStart)}</span>
+              <span class="sep">→</span>
+              <span class="time-val">${fmtDate(e.caAfter.tEnd)}</span>
+            </span>
+          </td>
+          <td style="text-align:center"><span class="chip chip-red">Khoảng ${e.gapMin} phút</span></td>
+        </tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Khoảng cách ca điện tim liên tiếp < 4 phút (cùng bác sĩ, cùng mã máy)',
+        gDT1.items.length,'red',
+        `<div class="dt-wrap"><table class="dt">
+          <thead><tr><th>Bác sĩ & Máy</th><th>Ca trước</th><th>Ca kế tiếp</th><th>Khoảng cách</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      ));
+    }
+
+    // RULE-2: Khoảng cách điện tim → nội soi < 3 phút
+    if(gDT2){
+      let rows='';
+      for(const e of gDT2.items){
+        rows+=`<tr>
+          <td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td>
+          <td>
+            <span class="pill pill-svc">🔬 ${e.dienTim.tenDV}</span><br>
+            <span class="time-range" style="margin-top:4px">
+              <span class="time-val">${fmtDate(e.dienTim.tEnd)}</span>
+              <span class="sep" style="margin:0 4px">KQ</span>
+            </span>
+          </td>
+          <td>
+            <span class="pill pill-svc">🔬 ${e.noiSoi.tenDV}</span><br>
+            <span class="bn-code">${e.noiSoi.tenBS}</span><br>
+            <span class="time-range" style="margin-top:4px">
+              <span class="time-val">${fmtDate(e.noiSoi.tStart)}</span>
+              <span class="sep" style="margin:0 4px">TH</span>
+            </span>
+          </td>
+          <td style="text-align:center"><span class="chip chip-red">+${e.gapMin} phút</span><br><span class="bn-code">(Chuẩn ≥3 phút)</span></td>
+        </tr>`;
+      }
+      mod.querySelector('.module-body').appendChild(makeSub(
+        'Khoảng cách từ kết quả điện tim đến bắt đầu nội soi thực quản < 3 phút',
+        gDT2.items.length,'amber',
+        `<div class="dt-wrap"><table class="dt">
+          <thead><tr><th>Bệnh nhân</th><th>Điện tim (KQ)</th><th>Nội soi Thực quản (TH)</th><th>Khoảng cách</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+      ));
+    }
+
+    div.appendChild(mod);
+  }
+}
+
+function renderBSDetail(panel, bs){
+  let html=`<div class="detail-bs-header"><div class="detail-bs-name">👨‍⚕️ ${bs.tenBS}</div><span class="chip chip-red">${bs.caList.length} ca lỗi</span></div>`;
+  bs.caList.forEach((ca,i)=>{
+    const badges=[];
+    if(ca.isPhanThan) badges.push('<span class="chip chip-red">⚡ Y lệnh nhiều BN cùng lúc</span>');
+    if(ca.isClsConcurrent) badges.push('<span class="chip chip-amber">📊 Đọc CLS đồng thời y lệnh</span>');
+    const cardCls=(ca.isPhanThan&&ca.isClsConcurrent)?'mixed-type':(ca.isClsConcurrent?'cls-type':'');
+    const bnRows=ca.benhNhanList.map(b=>{
+      let pills='';
+      if(b.hasCLS) pills+=`<span class="pill pill-cls">📊 Đọc KQ CLS</span> `;
+      pills+=(b.yLenh||[]).map(yl=>`<span class="pill ${yl.loai==='Thuốc'?'pill-drug':'pill-svc'}">${yl.loai==='Thuốc'?'💊':'🔬'} ${yl.ten}</span>`).join(' ');
+      return `<div class="bn-row"><div class="bn-name">${b.tenBN} <span class="bn-code">${b.maBN}</span></div><div class="bn-pills">${pills||'<span style="color:var(--faint);font-size:11px">—</span>'}</div></div>`;
+    }).join('');
+    html+=`<div class="incident-card ${cardCls}">
+      <div class="incident-head">
+        <span class="incident-num">Ca #${i+1}</span>
+        <span class="incident-time">🕐 ${fmtDate(ca.thoiGian)}</span>
+        ${badges.join(' ')}
+        <span class="chip chip-muted" style="margin-left:auto">${ca.soLuong} BN</span>
+      </div>
+      <div class="incident-body">${bnRows}</div>
+    </div>`;
+  });
+  panel.innerHTML=html;
+}
+
+function buildDrugTable(list, mode){
+  let rows='';
+  for(const e of list){
+    const rel=mode==='afterRA'?e.thuocLoi.filter(t=>t.isAfterRA):e.thuocLoi.filter(t=>t.isTrungCLS);
+    const tStr=rel.map(t=>{
+      let tag=t.isAfterRA&&t.chenhLech?`<span class="chip chip-red">+${t.chenhLech}</span> `:'';
+      if(t.isTrungCLS) tag+=`<span class="chip chip-amber">Trùng giờ CLS</span>`;
+      return `<div style="margin-bottom:4px"><span class="pill pill-drug">💊 ${t.thuoc}</span> <span class="t-inline">${fmtDate(t.ngayYL)}</span> ${tag}</div>`;
+    }).join('');
+    rows+=`<tr><td>${e.MA_LK}</td><td><b>${e.tenBN}</b><br><span class="bn-code">${e.maBN}</span></td><td>${e.tenBS}</td><td>${e.ngayRA?`<span class="t-pill">${fmtDate(e.ngayRA)}</span>`:'—'}</td><td>${tStr}</td></tr>`;
+  }
+  return `<div class="dt-wrap"><table class="dt"><thead><tr><th>Mã hồ sơ</th><th>Bệnh nhân</th><th>Bác sĩ</th><th>Giờ ra viện</th><th>Thuốc vi phạm</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function makeModule(id,title,sub,count,accent,icon){
+  const cls=accent?`module-header ${accent}`:'module-header';
+  const div=document.createElement('div'); div.className='module'; div.id=id;
+  div.innerHTML=`
+    <div class="${cls}" onclick="toggleMod(this)">
+      <span class="module-icon">${icon}</span>
+      <div style="flex:1;min-width:0">
+        <div class="module-title">${title}</div>
+        <div class="module-meta">${sub}</div>
+      </div>
+      <span class="module-count">${count}</span>
+      <span class="module-chevron">▾</span>
+    </div>
+    <div class="module-body"></div>`;
+  return div;
+}
+
+function makeSub(title,count,accent,innerHTML){
+  const div=document.createElement('div'); div.className='sub-group';
+  div.innerHTML=`
+    <div class="sub-header ${accent||''}" onclick="toggleSub(this)">
+      <span class="sub-title">${title}</span>
+      <span class="sub-count">${count}</span>
+      <span class="sub-chevron">▾</span>
+    </div>
+    <div class="sub-body">${innerHTML}</div>`;
+  return div;
+}
+
+function toggleMod(h){ const m=h.closest('.module'); m.classList.toggle('collapsed'); }
+function toggleSub(h){ const s=h.closest('.sub-group'); s.classList.toggle('collapsed'); }
+</script>
+</body>
+</html>
